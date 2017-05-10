@@ -226,4 +226,4 @@ MODULE_LICENSE("GPL");
 #define MODULE_PARAM_PREFIX	"androidboot.vbmeta."
 module_param_string(device, avb_vbmeta_device, sizeof(avb_vbmeta_device), 0);
 module_param_string(invalidate_on_error, avb_invalidate_on_error,
-		    sizeof(avb_invalidate_on_error), 0);
+                    sizeof(avb_invalidate_on_error), 0);
