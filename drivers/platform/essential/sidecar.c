@@ -46,6 +46,7 @@ struct sidecar_platform_data {
 	unsigned char is_enabled;
 	struct mutex work_func_lock;
 
+	struct power_supply *psy;
 	struct class sidecar_class;
 };
 
@@ -292,7 +293,6 @@ static void sidecar_work_func(struct work_struct *work)
 			}
 		}
 	} else {
-		pr_info("%s: not accessory connected (over-current: %d)\n", DEV_NAME, pdata->under_overcurrent);
 		gpio_set_value(pdata->ks_source_en, 0);
 		gpio_set_value(pdata->ks_sink_en, 0);
 		if (pdata->is_connected) {
@@ -305,6 +305,15 @@ static void sidecar_work_func(struct work_struct *work)
 			sysfs_notify(&pdata->dock_dev.dev->kobj, NULL, "state");
 		}
 		pdata->is_connected = 0;
+		/* Suspend DC_IN when disconnecting */
+		if (pdata->psy) {
+			union power_supply_propval pval = {0, };
+			pval.intval = 1;
+			power_supply_set_property(pdata->psy,
+				POWER_SUPPLY_PROP_INPUT_SUSPEND, &pval);
+			pr_info("%s: suspend DC-IN\n",DEV_NAME);
+		}
+		pr_info("%s: not accessory connected (over-current: %d)\n", DEV_NAME, pdata->under_overcurrent);
 	}
 
 	pr_debug("%s: ks_boost_en=%d, ks_source_en=%d, ks_sink_en=%d, is_source=%d, is_sink=%d, is_connected=%d\n",
@@ -682,6 +691,7 @@ static int sidecar_probe(struct platform_device *pdev)
 	pdata->is_connected = 0;
 	pdata->is_enabled = 1;
 	pdata->pcie_enabled = 0;
+	pdata->psy = power_supply_get_by_name("dc");
 
 	mutex_init(&pdata->work_func_lock);
 	wake_lock_init(&pdata->wl, WAKE_LOCK_SUSPEND, "Sibeam_wakelock");
