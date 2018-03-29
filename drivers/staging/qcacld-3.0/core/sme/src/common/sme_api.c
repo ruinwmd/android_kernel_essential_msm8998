@@ -5789,6 +5789,13 @@ QDF_STATUS sme_neighbor_report_request(tHalHandle hHal, uint8_t sessionId,
 			 TRACE_CODE_SME_RX_HDD_NEIGHBOR_REPORTREQ, NO_SESSION,
 			 0));
 
+	if (pRrmNeighborReq->neighbor_report_offload) {
+		status = csr_invoke_neighbor_report_request(sessionId,
+							    pRrmNeighborReq,
+							    false);
+		return status;
+	}
+
 	if (QDF_STATUS_SUCCESS == sme_acquire_global_lock(&pMac->sme)) {
 		status =
 			sme_rrm_neighbor_report_request(hHal, sessionId,
@@ -6243,12 +6250,12 @@ QDF_STATUS sme_set_host_offload(tHalHandle hHal, uint8_t sessionId,
 }
 
 QDF_STATUS sme_conf_hw_filter_mode(tHalHandle hal, uint8_t session_id,
-				   uint8_t mode_bitmap)
+				   uint8_t mode_bitmap, bool filter_enable)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hal);
 	QDF_STATUS status;
 	tCsrRoamSession *session;
-	struct hw_filter_request *req;
+	struct wmi_hw_filter_req_params *req;
 	cds_msg_t msg;
 
 	status = sme_acquire_global_lock(&pMac->sme);
@@ -6271,6 +6278,8 @@ QDF_STATUS sme_conf_hw_filter_mode(tHalHandle hal, uint8_t session_id,
 		return QDF_STATUS_E_NOMEM;
 	}
 
+	req->vdev_id = session_id;
+	req->enable = filter_enable;
 	req->mode_bitmap = mode_bitmap;
 	qdf_copy_macaddr(&req->bssid, &session->connectedProfile.bssid);
 
@@ -7512,14 +7521,6 @@ QDF_STATUS sme_get_cfg_valid_channels(tHalHandle hHal, uint8_t *aValidChannels,
 void sme_set_cc_src(tHalHandle hHal, enum country_src cc_src)
 {
 	tpAniSirGlobal mac_ctx = PMAC_STRUCT(hHal);
-
-	/*
-	 * in reg callback from kernel, for 11d source also
-	 * the source is SOURCE_USERSPACE
-	 */
-	if ((cc_src == SOURCE_USERSPACE) &&
-	    (SOURCE_11D == mac_ctx->reg_hint_src))
-		return;
 
 	mac_ctx->reg_hint_src = cc_src;
 }
@@ -16149,9 +16150,12 @@ void sme_update_tgt_services(tHalHandle hal, struct wma_tgt_services *cfg)
 	mac_ctx->pmf_offload = cfg->pmf_offload;
 	mac_ctx->is_fils_roaming_supported =
 				cfg->is_fils_roaming_supported;
+	mac_ctx->is_11k_offload_supported =
+				cfg->is_11k_offload_supported;
 	QDF_TRACE(QDF_MODULE_ID_SME, QDF_TRACE_LEVEL_DEBUG,
-		  FL("mac_ctx->pmf_offload: %d fils_roam support %d"),
-		  mac_ctx->pmf_offload, mac_ctx->is_fils_roaming_supported);
+		  FL("pmf_offload: %d fils_roam support %d 11k_offload %d"),
+		  mac_ctx->pmf_offload, mac_ctx->is_fils_roaming_supported,
+		  mac_ctx->is_11k_offload_supported);
 
 }
 
