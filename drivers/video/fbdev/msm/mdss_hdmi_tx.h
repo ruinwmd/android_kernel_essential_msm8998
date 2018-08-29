@@ -90,7 +90,7 @@ struct hdmi_tx_ctrl {
 	struct msm_ext_disp_audio_setup_params audio_params;
 	struct msm_ext_disp_init_data ext_audio_data;
 	struct work_struct fps_work;
-	struct mdp_hdr_stream hdr_data;
+	struct mdp_hdr_stream_ctrl hdr_data;
 
 	spinlock_t hpd_state_lock;
 

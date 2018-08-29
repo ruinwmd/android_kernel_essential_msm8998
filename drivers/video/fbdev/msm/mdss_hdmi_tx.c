@@ -1289,7 +1289,7 @@ static ssize_t hdmi_tx_sysfs_wta_hdr_stream(struct device *dev,
 		goto end;
 	}
 
-	memcpy(&ctrl->hdr_data, buf, sizeof(struct mdp_hdr_stream));
+	memcpy(&ctrl->hdr_data, buf, sizeof(struct mdp_hdr_stream_ctrl));
 
 	pr_debug("%s: 0x%04x 0x%04x 0x%04x 0x%04x 0x%04x 0x%04x 0x%04x\n",
 			__func__,
