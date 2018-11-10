@@ -656,14 +656,14 @@ struct v4l2_framebuffer32 {
 	__u32			flags;
 	compat_caddr_t		base;
 	struct {
-		__u32		width;
-		__u32		height;
-		__u32		pixelformat;
-		__u32		field;
-		__u32		bytesperline;
-		__u32		sizeimage;
-		__u32		colorspace;
-		__u32		priv;
+		__u32	width;
+		__u32	height;
+		__u32	pixelformat;
+		__u32	field;
+		__u32	bytesperline;
+		__u32	sizeimage;
+		__u32	colorspace;
+		__u32	priv;
 	} fmt;
 };
 
@@ -696,6 +696,7 @@ static int put_v4l2_framebuffer32(struct v4l2_framebuffer __user *kp,
 		return -EFAULT;
 	return 0;
 }
+
 
 struct v4l2_input32 {
 	__u32	     index;		/*  Which input */
@@ -1216,7 +1217,6 @@ static long do_video_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 				   ((unsigned int __user *)up_native)))
 			err = -EFAULT;
 		break;
-
 	case VIDIOC_G_FBUF:
 		err = put_v4l2_framebuffer32(up_native, up);
 		break;
