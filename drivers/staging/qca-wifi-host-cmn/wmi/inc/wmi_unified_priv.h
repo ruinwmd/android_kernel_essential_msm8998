@@ -1221,10 +1221,6 @@ QDF_STATUS (*extract_sar_limit_event)(wmi_unified_t wmi_handle,
 				      uint8_t *evt_buf,
 				      struct sar_limit_event *event);
 
-QDF_STATUS (*extract_sar2_result_event)(void *handle,
-					uint8_t *event,
-					uint32_t len);
-
 uint16_t (*wmi_set_htc_tx_tag)(wmi_unified_t wmi_handle,
 				wmi_buf_t buf, uint32_t cmd_id);
 
@@ -1239,11 +1235,6 @@ QDF_STATUS (*send_wow_timer_pattern_cmd)(wmi_unified_t wmi_handle,
 
 QDF_STATUS (*send_roam_scan_stats_cmd)(wmi_unified_t wmi_handle,
 				       struct wmi_roam_scan_stats_req *params);
-
-QDF_STATUS (*extract_roam_scan_stats_res_evt)(wmi_unified_t wmi_handle,
-				void *evt_buf,
-				uint32_t *vdev_id,
-				struct wmi_roam_scan_stats_res **res_param);
 
 QDF_STATUS (*send_offload_11k_cmd)(wmi_unified_t wmi_handle,
 		struct wmi_11k_offload_params *params);

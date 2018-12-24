@@ -6428,19 +6428,6 @@ QDF_STATUS wmi_unified_extract_sar_limit_event(void *wmi_hdl,
 	return QDF_STATUS_E_FAILURE;
 }
 
-QDF_STATUS wmi_unified_extract_sar2_result_event(void *handle,
-						 uint8_t *event, uint32_t len)
-{
-	wmi_unified_t wmi_handle = handle;
-
-	if (wmi_handle->ops->extract_sar2_result_event)
-		return wmi_handle->ops->extract_sar2_result_event(wmi_handle,
-								  event,
-								  len);
-
-	return QDF_STATUS_E_FAILURE;
-}
-
 /**
  * wmi_unified_encrypt_decrypt_send_cmd() - send encryptdecrypt cmd to fw
  * @wmi_hdl: wmi handle
@@ -6567,19 +6554,6 @@ QDF_STATUS wmi_unified_invoke_neighbor_report_cmd(void *wmi_hdl,
 	if (wmi_handle->ops->send_invoke_neighbor_report_cmd)
 		return wmi_handle->ops->send_invoke_neighbor_report_cmd(
 				wmi_handle, params);
-
-	return QDF_STATUS_E_FAILURE;
-}
-
-QDF_STATUS
-wmi_extract_roam_scan_stats_res_evt(wmi_unified_t wmi, void *evt_buf,
-				    uint32_t *vdev_id,
-				    struct wmi_roam_scan_stats_res **res_param)
-{
-	if (wmi->ops->extract_roam_scan_stats_res_evt)
-		return wmi->ops->extract_roam_scan_stats_res_evt(wmi,
-							evt_buf,
-							vdev_id, res_param);
 
 	return QDF_STATUS_E_FAILURE;
 }

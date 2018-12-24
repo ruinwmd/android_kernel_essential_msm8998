@@ -797,8 +797,6 @@ struct beacon_tmpl_params {
  * struct beacon_params - beacon cmd parameter
  * @vdev_id: vdev id
  * @tim_ie_offset: tim ie offset
- * @csa_count_offset: Offset of Switch count field in CSA IE
- * @ecsa_count_offset: Offset of Switch count field in ECSA IE
  * @tmpl_len: beacon template length
  * @tmpl_len_aligned: beacon template alignment
  * @frm: beacon template parameter
@@ -806,8 +804,6 @@ struct beacon_tmpl_params {
 struct beacon_params {
 	uint8_t vdev_id;
 	uint32_t tim_ie_offset;
-	uint32_t csa_count_offset;
-	uint32_t ecsa_count_offset;
 	uint32_t tmpl_len;
 	uint32_t tmpl_len_aligned;
 	uint8_t *frm;
@@ -5304,7 +5300,7 @@ typedef enum {
 	wmi_get_arp_stats_req_id,
 	wmi_sar_get_limits_event_id,
 	wmi_roam_scan_stats_event_id,
-	wmi_wlan_sar2_result_event_id,
+
 	wmi_events_max,
 } wmi_conv_event_id;
 
@@ -7669,13 +7665,13 @@ struct wmi_roam_scan_stats_req {
 };
 
 /**
- * struct wmi_roam_scan_cand - Roam scan candidates
+ * struct wmi_roam_scan_stats_candidate - Roam scan candidates
  * @score: score of AP
  * @rssi: rssi of the AP
  * @freq: center frequency
  * @bssid: bssid of AP
  */
-struct wmi_roam_scan_cand {
+struct wmi_roam_scan_stats_candidate {
 	uint32_t score;
 	uint32_t rssi;
 	uint32_t freq;
@@ -7714,7 +7710,7 @@ struct wmi_roam_scan_stats_params {
 
 	/* Number of roam candidates that are being reported in the stats */
 	uint32_t num_roam_candidates;
-	struct wmi_roam_scan_cand cand[WMI_ROAM_SCAN_STATS_CANDIDATES_MAX];
+	struct wmi_roam_scan_stats_candidate roam_candidate[WMI_ROAM_SCAN_STATS_CANDIDATES_MAX];
 	uint32_t trigger_id;
 	uint32_t trigger_value;
 };
