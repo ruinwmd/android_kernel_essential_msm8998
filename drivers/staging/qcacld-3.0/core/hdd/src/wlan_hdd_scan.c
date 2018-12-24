@@ -93,12 +93,6 @@ struct nla_policy scan_policy[QCA_WLAN_VENDOR_ATTR_SCAN_MAX + 1] = {
 	[QCA_WLAN_VENDOR_ATTR_SCAN_FLAGS] = {.type = NLA_U32},
 	[QCA_WLAN_VENDOR_ATTR_SCAN_TX_NO_CCK_RATE] = {.type = NLA_FLAG},
 	[QCA_WLAN_VENDOR_ATTR_SCAN_COOKIE] = {.type = NLA_U64},
-	[QCA_WLAN_VENDOR_ATTR_SCAN_IE] = {.type = NLA_BINARY,
-					  .len = MAX_DEFAULT_SCAN_IE_LEN},
-	[QCA_WLAN_VENDOR_ATTR_SCAN_MAC] = {.type = NLA_UNSPEC,
-					   .len = QDF_MAC_ADDR_SIZE},
-	[QCA_WLAN_VENDOR_ATTR_SCAN_MAC_MASK] = {.type = NLA_UNSPEC,
-						.len = QDF_MAC_ADDR_SIZE},
 };
 
 /**
@@ -757,9 +751,9 @@ static bool wlan_hdd_is_scan_pending(hdd_adapter_t *adapter)
  *
  * Return: void
  */
-static void hdd_scan_inactivity_timer_handler(unsigned long scan_req)
+static void hdd_scan_inactivity_timer_handler(void *scan_req)
 {
-	struct hdd_scan_req *hdd_scan_req = (struct hdd_scan_req *)scan_req;
+	struct hdd_scan_req *hdd_scan_req = scan_req;
 
 	hdd_debug("scan_id %d, enqueue timestamp %u, flags 0x%X",
 		hdd_scan_req->scan_id, hdd_scan_req->timestamp,
@@ -2699,7 +2693,7 @@ static int __wlan_hdd_cfg80211_vendor_scan(struct wiphy *wiphy,
 	enum nl80211_band band;
 	uint32_t n_channels = 0, n_ssid = 0;
 	uint32_t tmp, count, j;
-	size_t len, ie_len = 0;
+	size_t len, ie_len;
 	struct ieee80211_channel *chan;
 	hdd_context_t *hdd_ctx = wiphy_priv(wiphy);
 	int ret;
@@ -2742,6 +2736,8 @@ static int __wlan_hdd_cfg80211_vendor_scan(struct wiphy *wiphy,
 
 	if (tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE])
 		ie_len = nla_len(tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE]);
+	else
+		ie_len = 0;
 
 	len = sizeof(*request) + (sizeof(*request->ssids) * n_ssid) +
 			(sizeof(*request->channels) * n_channels) + ie_len;
@@ -2759,7 +2755,6 @@ static int __wlan_hdd_cfg80211_vendor_scan(struct wiphy *wiphy,
 			request->ie = (void *)(request->channels + n_channels);
 	}
 
-	request->ie_len = ie_len;
 	count = 0;
 	if (tb[QCA_WLAN_VENDOR_ATTR_SCAN_FREQUENCIES]) {
 		nla_for_each_nested(attr,
@@ -2817,9 +2812,12 @@ static int __wlan_hdd_cfg80211_vendor_scan(struct wiphy *wiphy,
 		}
 	}
 
-	if (ie_len)
-		nla_memcpy((void *)request->ie,
-			   tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE], ie_len);
+	if (tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE]) {
+		request->ie_len = nla_len(tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE]);
+		memcpy((void *)request->ie,
+				nla_data(tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE]),
+				request->ie_len);
+	}
 
 	for (count = 0; count < HDD_NUM_NL80211_BANDS; count++)
 		if (wiphy->bands[count])

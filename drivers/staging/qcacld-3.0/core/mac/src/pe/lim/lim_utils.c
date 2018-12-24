@@ -5477,8 +5477,10 @@ void lim_process_add_sta_rsp(tpAniSirGlobal mac_ctx, tpSirMsgQ msg)
 	else if (LIM_IS_NDI_ROLE(session))
 		lim_ndp_add_sta_rsp(mac_ctx, session, msg->bodyptr);
 #ifdef FEATURE_WLAN_TDLS
-	else if (add_sta_params->staType == STA_ENTRY_TDLS_PEER)
+	else if (mac_ctx->lim.gLimAddStaTdls) {
 		lim_process_tdls_add_sta_rsp(mac_ctx, msg->bodyptr, session);
+		mac_ctx->lim.gLimAddStaTdls = false;
+	}
 #endif
 	else
 		lim_process_mlm_add_sta_rsp(mac_ctx, msg, session);

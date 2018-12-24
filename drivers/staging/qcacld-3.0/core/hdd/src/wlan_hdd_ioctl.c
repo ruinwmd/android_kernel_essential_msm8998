@@ -40,7 +40,6 @@
 #include <linux/ctype.h>
 #include "wma.h"
 #include "wlan_hdd_napi.h"
-#include "wlan_hdd_request_manager.h"
 
 #ifdef FEATURE_WLAN_ESE
 #include <sme_api.h>
@@ -154,83 +153,138 @@ static int drv_cmd_validate(uint8_t *command, int len)
 }
 
 #ifdef FEATURE_WLAN_ESE
-struct tsm_priv {
-	tAniTrafStrmMetrics tsm_metrics;
-};
-
 static void hdd_get_tsm_stats_cb(tAniTrafStrmMetrics tsm_metrics,
 				 const uint32_t staId, void *context)
 {
-	struct hdd_request *request;
-	struct tsm_priv *priv;
+	struct statsContext *stats_context = NULL;
+	hdd_adapter_t *adapter = NULL;
 
-	request = hdd_request_get(context);
-	if (!request) {
-		hdd_err("Obsolete request");
+	if (NULL == context) {
+		hdd_err("Bad param, context [%pK]", context);
 		return;
 	}
-	priv = hdd_request_priv(request);
-	priv->tsm_metrics = tsm_metrics;
-	hdd_request_complete(request);
-	hdd_request_put(request);
-	EXIT();
 
+	/*
+	 * there is a race condition that exists between this callback
+	 * function and the caller since the caller could time out either
+	 * before or while this code is executing.  we use a spinlock to
+	 * serialize these actions
+	 */
+	spin_lock(&hdd_context_lock);
+
+	stats_context = context;
+	adapter = stats_context->pAdapter;
+	if ((NULL == adapter) ||
+	    (STATS_CONTEXT_MAGIC != stats_context->magic)) {
+		/*
+		 * the caller presumably timed out so there is
+		 * nothing we can do
+		 */
+		spin_unlock(&hdd_context_lock);
+		hdd_warn("Invalid context, adapter [%pK] magic [%08x]",
+			  adapter, stats_context->magic);
+		return;
+	}
+
+	/* context is valid so caller is still waiting */
+
+	/* paranoia: invalidate the magic */
+	stats_context->magic = 0;
+
+	/* copy over the tsm stats */
+	adapter->tsmStats.UplinkPktQueueDly = tsm_metrics.UplinkPktQueueDly;
+	qdf_mem_copy(adapter->tsmStats.UplinkPktQueueDlyHist,
+		     tsm_metrics.UplinkPktQueueDlyHist,
+		     sizeof(adapter->tsmStats.UplinkPktQueueDlyHist) /
+		     sizeof(adapter->tsmStats.UplinkPktQueueDlyHist[0]));
+	adapter->tsmStats.UplinkPktTxDly = tsm_metrics.UplinkPktTxDly;
+	adapter->tsmStats.UplinkPktLoss = tsm_metrics.UplinkPktLoss;
+	adapter->tsmStats.UplinkPktCount = tsm_metrics.UplinkPktCount;
+	adapter->tsmStats.RoamingCount = tsm_metrics.RoamingCount;
+	adapter->tsmStats.RoamingDly = tsm_metrics.RoamingDly;
+
+	/* notify the caller */
+	complete(&stats_context->completion);
+
+	/* serialization is complete */
+	spin_unlock(&hdd_context_lock);
 }
 
-static int hdd_get_tsm_stats(hdd_adapter_t *adapter,
+static
+QDF_STATUS hdd_get_tsm_stats(hdd_adapter_t *adapter,
 			     const uint8_t tid,
 			     tAniTrafStrmMetrics *tsm_metrics)
 {
-	hdd_context_t *hdd_ctx;
-	hdd_station_ctx_t *hdd_sta_ctx;
-	QDF_STATUS status;
-	int ret;
-	void *cookie;
-	struct hdd_request *request;
-	struct tsm_priv *priv;
-	static const struct hdd_request_params params = {
-		.priv_size = sizeof(*priv),
-		.timeout_ms = WLAN_WAIT_TIME_STATS,
-	};
+	hdd_station_ctx_t *hdd_sta_ctx = NULL;
+	QDF_STATUS hstatus;
+	QDF_STATUS vstatus = QDF_STATUS_SUCCESS;
+	unsigned long rc;
+	static struct statsContext context;
+	hdd_context_t *hdd_ctx = NULL;
 
 	if (NULL == adapter) {
 		hdd_err("adapter is NULL");
-		return -EINVAL;
+		return QDF_STATUS_E_FAULT;
 	}
 
 	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	hdd_sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 
-	request = hdd_request_alloc(&params);
-	if (!request) {
-		hdd_err("Request allocation failure");
-		return -ENOMEM;
+	/* we are connected prepare our callback context */
+	init_completion(&context.completion);
+	context.pAdapter = adapter;
+	context.magic = STATS_CONTEXT_MAGIC;
+
+	/* query tsm stats */
+	hstatus = sme_get_tsm_stats(hdd_ctx->hHal, hdd_get_tsm_stats_cb,
+				    hdd_sta_ctx->conn_info.staId[0],
+				    hdd_sta_ctx->conn_info.bssId,
+				    &context, hdd_ctx->pcds_context, tid);
+	if (QDF_STATUS_SUCCESS != hstatus) {
+		hdd_err("Unable to retrieve statistics");
+		vstatus = QDF_STATUS_E_FAULT;
+	} else {
+		/* request was sent -- wait for the response */
+		rc = wait_for_completion_timeout(&context.completion,
+				msecs_to_jiffies(WLAN_WAIT_TIME_STATS));
+		if (!rc) {
+			hdd_err("SME timed out while retrieving statistics");
+			vstatus = QDF_STATUS_E_TIMEOUT;
+		}
 	}
-	cookie = hdd_request_cookie(request);
 
-	status = sme_get_tsm_stats(hdd_ctx->hHal, hdd_get_tsm_stats_cb,
-				   hdd_sta_ctx->conn_info.staId[0],
-				   hdd_sta_ctx->conn_info.bssId,
-				   cookie, hdd_ctx->pcds_context, tid);
-	if (QDF_STATUS_SUCCESS != status) {
-		hdd_err("Unable to retrieve tsm statistics");
-		ret = qdf_status_to_os_return(status);
-		goto cleanup;
+	/*
+	 * either we never sent a request, we sent a request and received a
+	 * response or we sent a request and timed out.  if we never sent a
+	 * request or if we sent a request and got a response, we want to
+	 * clear the magic out of paranoia.  if we timed out there is a
+	 * race condition such that the callback function could be
+	 * executing at the same time we are. of primary concern is if the
+	 * callback function had already verified the "magic" but had not
+	 * yet set the completion variable when a timeout occurred. we
+	 * serialize these activities by invalidating the magic while
+	 * holding a shared spinlock which will cause us to block if the
+	 * callback is currently executing
+	 */
+	spin_lock(&hdd_context_lock);
+	context.magic = 0;
+	spin_unlock(&hdd_context_lock);
+
+	if (QDF_STATUS_SUCCESS == vstatus) {
+		tsm_metrics->UplinkPktQueueDly =
+			adapter->tsmStats.UplinkPktQueueDly;
+		qdf_mem_copy(tsm_metrics->UplinkPktQueueDlyHist,
+			     adapter->tsmStats.UplinkPktQueueDlyHist,
+			     sizeof(adapter->tsmStats.UplinkPktQueueDlyHist) /
+			     sizeof(adapter->tsmStats.
+				    UplinkPktQueueDlyHist[0]));
+		tsm_metrics->UplinkPktTxDly = adapter->tsmStats.UplinkPktTxDly;
+		tsm_metrics->UplinkPktLoss = adapter->tsmStats.UplinkPktLoss;
+		tsm_metrics->UplinkPktCount = adapter->tsmStats.UplinkPktCount;
+		tsm_metrics->RoamingCount = adapter->tsmStats.RoamingCount;
+		tsm_metrics->RoamingDly = adapter->tsmStats.RoamingDly;
 	}
-
-	ret = hdd_request_wait_for_response(request);
-	if (ret) {
-		hdd_err("SME timed out while retrieving tsm statistics");
-		goto cleanup;
-	}
-
-	priv = hdd_request_priv(request);
-	*tsm_metrics = priv->tsm_metrics;
-
- cleanup:
-	hdd_request_put(request);
-
-	return ret;
+	return vstatus;
 }
 #endif /*FEATURE_WLAN_ESE */
 
@@ -1455,13 +1509,6 @@ hdd_parse_set_roam_scan_channels_v1(hdd_adapter_t *adapter,
 		goto exit;
 	}
 
-	if (!sme_validate_channel_list(hdd_ctx->hHal,
-	    channel_list, num_chan)) {
-		hdd_err("List contains invalid channel(s)");
-		ret = -EINVAL;
-		goto exit;
-	}
-
 	status =
 		sme_change_roam_scan_channel_list(hdd_ctx->hHal,
 						  adapter->sessionId,
@@ -1523,13 +1570,6 @@ hdd_parse_set_roam_scan_channels_v2(hdd_adapter_t *adapter,
 
 	for (i = 0; i < num_chan; i++) {
 		channel = *value++;
-		if (!channel) {
-			hdd_err("Channels end at index %d, expected %d",
-				i, num_chan);
-			ret = -EINVAL;
-			goto exit;
-		}
-
 		if (channel > WNI_CFG_CURRENT_CHANNEL_STAMAX) {
 			hdd_err("index %d invalid channel %d",
 				  i, channel);
@@ -1538,14 +1578,6 @@ hdd_parse_set_roam_scan_channels_v2(hdd_adapter_t *adapter,
 		}
 		channel_list[i] = channel;
 	}
-
-	if (!sme_validate_channel_list(hdd_ctx->hHal,
-	    channel_list, num_chan)) {
-		hdd_err("List contains invalid channel(s)");
-		ret = -EINVAL;
-		goto exit;
-	}
-
 	status =
 		sme_change_roam_scan_channel_list(hdd_ctx->hHal,
 						  adapter->sessionId,
@@ -2863,23 +2895,25 @@ static int drv_cmd_p2p_dev_addr(hdd_adapter_t *adapter,
 				uint8_t command_len,
 				hdd_priv_data_t *priv_data)
 {
-	struct qdf_mac_addr *addr = &hdd_ctx->p2pDeviceAddress;
-	size_t user_size = QDF_MIN(sizeof(addr->bytes), priv_data->total_len);
+	int ret = 0;
 
 	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
 			 TRACE_CODE_HDD_P2P_DEV_ADDR_IOCTL,
 			 adapter->sessionId,
-			 (unsigned int)(*(addr->bytes + 2) << 24 |
-				*(addr->bytes + 3) << 16 |
-				*(addr->bytes + 4) << 8 |
-				*(addr->bytes + 5))));
+			(unsigned int)(*(hdd_ctx->p2pDeviceAddress.bytes + 2)
+				<< 24 | *(hdd_ctx->p2pDeviceAddress.bytes
+				+ 3) << 16 | *(hdd_ctx->
+				p2pDeviceAddress.bytes + 4) << 8 |
+				*(hdd_ctx->p2pDeviceAddress.bytes +
+				5))));
 
-	if (copy_to_user(priv_data->buf, addr->bytes, user_size)) {
+	if (copy_to_user(priv_data->buf, hdd_ctx->p2pDeviceAddress.bytes,
+			 sizeof(tSirMacAddr))) {
 		hdd_err("failed to copy data to user buffer");
-		return -EFAULT;
+		ret = -EFAULT;
 	}
 
-	return 0;
+	return ret;
 }
 
 /**
@@ -2973,26 +3007,7 @@ static int drv_cmd_country(hdd_adapter_t *adapter,
 	char *country_code;
 	int32_t cc_from_db;
 
-	country_code = strnchr(command, strlen(command), ' ');
-	/* no argument after the command*/
-	if (!country_code)
-		return -EINVAL;
-
-	/* no space after the command*/
-	if (SPACE_ASCII_VALUE != *country_code)
-		return -EINVAL;
-
-	country_code++;
-
-	/* removing empty spaces*/
-	while ((SPACE_ASCII_VALUE  == *country_code) &&
-		   ('\0' !=  *country_code))
-		country_code++;
-
-	/* no or less than 2  arguments followed by spaces*/
-	if (*country_code == '\0' || *(country_code + 1) == '\0')
-		return -EINVAL;
-
+	country_code = command + 8;
 	if (!((country_code[0] == 'X' && country_code[1] == 'X') ||
 	    (country_code[0] == '0' && country_code[1] == '0'))) {
 		cc_from_db = cds_get_country_from_alpha2(country_code);
@@ -5061,16 +5076,13 @@ static int drv_cmd_get_ibss_peer_info_all(hdd_adapter_t *adapter,
 	/* Handle the command */
 	status = hdd_cfg80211_get_ibss_peer_info_all(adapter);
 	if (QDF_STATUS_SUCCESS == status) {
-		size_t user_size = QDF_MIN(WLAN_MAX_BUF_SIZE,
-					   priv_data->total_len);
-
 		/*
 		 * The variable extra needed to be allocated on the heap since
 		 * amount of memory required to copy the data for 32 devices
 		 * exceeds the size of 1024 bytes of default stack size. On
 		 * 64 bit devices, the default max stack size of 2048 bytes
 		 */
-		extra = qdf_mem_malloc(user_size);
+		extra = qdf_mem_malloc(WLAN_MAX_BUF_SIZE);
 
 		if (NULL == extra) {
 			hdd_err("memory allocation failed");
@@ -5079,7 +5091,7 @@ static int drv_cmd_get_ibss_peer_info_all(hdd_adapter_t *adapter,
 		}
 
 		/* Copy number of stations */
-		length = scnprintf(extra, user_size, "%d ",
+		length = scnprintf(extra, WLAN_MAX_BUF_SIZE, "%d ",
 				   pHddStaCtx->ibss_peer_info.numPeers);
 		numOfBytestoPrint = length;
 		for (idx = 0; idx < pHddStaCtx->ibss_peer_info.numPeers;
@@ -5102,8 +5114,8 @@ static int drv_cmd_get_ibss_peer_info_all(hdd_adapter_t *adapter,
 			rssi = pHddStaCtx->ibss_peer_info.peerInfoParams[idx].
 									rssi;
 
-			length += scnprintf(extra + length,
-				user_size - length,
+			length += scnprintf((extra + length),
+				WLAN_MAX_BUF_SIZE - length,
 				"%02x:%02x:%02x:%02x:%02x:%02x %d %d ",
 				mac_addr[0], mac_addr[1], mac_addr[2],
 				mac_addr[3], mac_addr[4], mac_addr[5],
@@ -5144,6 +5156,9 @@ static int drv_cmd_get_ibss_peer_info_all(hdd_adapter_t *adapter,
 			}
 			hdd_debug("%s", &extra[numOfBytestoPrint]);
 		}
+
+		/* Free temporary buffer */
+		qdf_mem_free(extra);
 	} else {
 		/* Command failed, log error */
 		hdd_err("GETIBSSPEERINFOALL command failed with status code %d",
@@ -5375,14 +5390,6 @@ static int drv_cmd_set_ccx_roam_scan_channels(hdd_adapter_t *adapter,
 		ret = -EINVAL;
 		goto exit;
 	}
-
-	if (!sme_validate_channel_list(hdd_ctx->hHal,
-	    ChannelList, numChannels)) {
-		hdd_err("List contains invalid channel(s)");
-		ret = -EINVAL;
-		goto exit;
-	}
-
 	status = sme_set_ese_roam_scan_channel_list(hdd_ctx->hHal,
 						    adapter->sessionId,
 						    ChannelList,
@@ -5409,7 +5416,7 @@ static int drv_cmd_get_tsm_stats(hdd_adapter_t *adapter,
 	int len = 0;
 	uint8_t tid = 0;
 	hdd_station_ctx_t *pHddStaCtx;
-	tAniTrafStrmMetrics tsm_metrics = {0};
+	tAniTrafStrmMetrics tsm_metrics;
 
 	if ((QDF_STA_MODE != adapter->device_mode) &&
 	    (QDF_P2P_CLIENT_MODE != adapter->device_mode)) {
@@ -5452,9 +5459,10 @@ static int drv_cmd_get_tsm_stats(hdd_adapter_t *adapter,
 	}
 	hdd_debug("Received Command to get tsm stats tid = %d",
 		 tid);
-	ret = hdd_get_tsm_stats(adapter, tid, &tsm_metrics);
-	if (ret) {
+	if (QDF_STATUS_SUCCESS !=
+	    hdd_get_tsm_stats(adapter, tid, &tsm_metrics)) {
 		hdd_err("failed to get tsm stats");
+		ret = -EFAULT;
 		goto exit;
 	}
 	hdd_debug(
@@ -5547,7 +5555,7 @@ static int drv_cmd_ccx_beacon_req(hdd_adapter_t *adapter,
 {
 	int ret;
 	uint8_t *value = command;
-	tCsrEseBeaconReq eseBcnReq = {0};
+	tCsrEseBeaconReq eseBcnReq;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 
 	if (QDF_STA_MODE != adapter->device_mode) {
@@ -5565,10 +5573,6 @@ static int drv_cmd_ccx_beacon_req(hdd_adapter_t *adapter,
 
 	if (!hdd_conn_is_connected(WLAN_HDD_GET_STATION_CTX_PTR(adapter))) {
 		hdd_debug("Not associated");
-
-		if (!eseBcnReq.numBcnReqIe)
-			return -EINVAL;
-
 		hdd_indicate_ese_bcn_report_no_results(adapter,
 			eseBcnReq.bcnReq[0].measurementToken,
 			0x02, /* BIT(1) set for measurement done */
@@ -5728,7 +5732,7 @@ static int drv_cmd_set_mc_rate(hdd_adapter_t *adapter,
 {
 	int ret = 0;
 	uint8_t *value = command;
-	int targetRate = 0;
+	int targetRate;
 
 	/* input value is in units of hundred kbps */
 
@@ -6297,7 +6301,7 @@ static int hdd_driver_rxfilter_comand_handler(uint8_t *command,
 		value = command + 13;
 	ret = kstrtou8(value, 10, &type);
 	if (ret < 0) {
-		hdd_err("kstrtou8 failed invalid input value");
+		hdd_err("kstrtou8 failed invalid input value %d", type);
 		return -EINVAL;
 	}
 
@@ -6867,6 +6871,8 @@ static const struct hdd_drv_cmd hdd_drv_cmds[] = {
 	{"COUNTRY",                   drv_cmd_country, true},
 	{"SETSUSPENDMODE",            drv_cmd_dummy, false},
 	{"SET_AP_WPS_P2P_IE",         drv_cmd_dummy, false},
+	{"BTCOEXSCAN",                drv_cmd_dummy, false},
+	{"RXFILTER",                  drv_cmd_dummy, false},
 	{"SETROAMTRIGGER",            drv_cmd_set_roam_trigger, true},
 	{"GETROAMTRIGGER",            drv_cmd_get_roam_trigger, false},
 	{"SETROAMSCANPERIOD",         drv_cmd_set_roam_scan_period, true},
@@ -6962,12 +6968,7 @@ static const struct hdd_drv_cmd hdd_drv_cmds[] = {
 	{"CHANNEL_SWITCH",            drv_cmd_set_channel_switch, true},
 	{"SETANTENNAMODE",            drv_cmd_set_antenna_mode, true},
 	{"GETANTENNAMODE",            drv_cmd_get_antenna_mode, false},
-	/* Deprecated commands */
 	{"STOP",                      drv_cmd_dummy, false},
-        {"RXFILTER-START",            drv_cmd_dummy, false},
-        {"RXFILTER-STOP",             drv_cmd_dummy, false},
-        {"BTCOEXSCAN-START",          drv_cmd_dummy, false},
-        {"BTCOEXSCAN-STOP",           drv_cmd_dummy, false},
 };
 
 /**

@@ -66,8 +66,6 @@
 
 #define MAX_MAC 2
 
-struct hdd_adapter_s;
-
 /**
  * enum hw_mode_ss_config - Possible spatial stream configuration
  * @SS_0x0: Unused Tx and Rx of MAC
@@ -851,13 +849,6 @@ QDF_STATUS qdf_wait_for_connection_update(void);
 QDF_STATUS qdf_reset_connection_update(void);
 QDF_STATUS qdf_set_connection_update(void);
 QDF_STATUS qdf_init_connection_update(void);
-
-/**
- * cds_stop_opportunistic_timer() - Stops opportunistic timer
- *
- * Return: QDF_STATUS
- */
-QDF_STATUS cds_stop_opportunistic_timer(void);
 QDF_STATUS cds_restart_opportunistic_timer(bool check_state);
 QDF_STATUS cds_modify_sap_pcl_based_on_mandatory_channel(uint8_t *pcl_list_org,
 		uint8_t *weight_list_org,
@@ -874,8 +865,7 @@ QDF_STATUS cds_set_sap_mandatory_channels(uint8_t *channels, uint32_t len);
 QDF_STATUS cds_reset_sap_mandatory_channels(void);
 #ifdef FEATURE_WLAN_MCC_TO_SCC_SWITCH
 QDF_STATUS cds_register_sap_restart_channel_switch_cb(
-		void (*sap_restart_chan_switch_cb)(struct hdd_adapter_s *,
-						   uint32_t, uint32_t));
+		void (*sap_restart_chan_switch_cb)(void *, uint32_t, uint32_t));
 QDF_STATUS cds_deregister_sap_restart_channel_switch_cb(void);
 #endif
 bool cds_is_any_mode_active_on_band_along_with_session(uint8_t session_id,
@@ -1083,14 +1073,4 @@ void cds_trim_acs_channel_list(tsap_Config_t *sap_cfg);
  * Return: true or false
  */
 bool cds_allow_sap_go_concurrency(enum cds_con_mode mode, uint8_t channel);
-
-/**
- * cds_is_sta_sap_scc() - check whether SAP is doing SCC with
- * STA
- * @sap_ch: operating channel of SAP interface
- * This function checks whether SAP is doing SCC with STA
- *
- * Return: true or false
- */
-bool cds_is_sta_sap_scc(uint8_t sap_ch);
 #endif /* __CDS_CONCURRENCY_H */

@@ -298,7 +298,6 @@ int wlan_hdd_ipv6_changed(struct notifier_block *nb,
  * @idev: pointer to net device
  * @ipv6addr: destination array to fill IPv6 addresses
  * @ipv6addr_type: IPv6 Address type
- * @scope_array: IPv6 Address scope
  * @count: number of IPv6 addresses
  *
  * This is the IPv6 utility function to populate unicast addresses.
@@ -307,9 +306,7 @@ int wlan_hdd_ipv6_changed(struct notifier_block *nb,
  */
 static int hdd_fill_ipv6_uc_addr(struct inet6_dev *idev,
 				uint8_t ipv6_uc_addr[][SIR_MAC_IPV6_ADDR_LEN],
-				uint8_t *ipv6addr_type,
-				enum sir_ipv6_addr_scope *scope_array,
-				uint32_t *count)
+				uint8_t *ipv6addr_type, uint32_t *count)
 {
 	struct inet6_ifaddr *ifa;
 	struct list_head *p;
@@ -331,7 +328,6 @@ static int hdd_fill_ipv6_uc_addr(struct inet6_dev *idev,
 			qdf_mem_copy(ipv6_uc_addr[*count], &ifa->addr.s6_addr,
 				sizeof(ifa->addr.s6_addr));
 			ipv6addr_type[*count] = SIR_IPV6_ADDR_UC_TYPE;
-			scope_array[*count] = sir_get_ipv6_addr_scope(scope);
 			hdd_debug("Index %d scope = %s UC-Address: %pI6",
 				*count, (scope == IPV6_ADDR_SCOPE_LINKLOCAL) ?
 				"LINK LOCAL" : "GLOBAL", ipv6_uc_addr[*count]);
@@ -351,7 +347,6 @@ static int hdd_fill_ipv6_uc_addr(struct inet6_dev *idev,
  * @idev: pointer to net device
  * @ipv6addr: destination array to fill IPv6 addresses
  * @ipv6addr_type: IPv6 Address type
- * @scope_array: IPv6 Address scope
  * @count: number of IPv6 addresses
  *
  * This is the IPv6 utility function to populate anycast addresses.
@@ -360,9 +355,7 @@ static int hdd_fill_ipv6_uc_addr(struct inet6_dev *idev,
  */
 static int hdd_fill_ipv6_ac_addr(struct inet6_dev *idev,
 				uint8_t ipv6_ac_addr[][SIR_MAC_IPV6_ADDR_LEN],
-				uint8_t *ipv6addr_type,
-				enum sir_ipv6_addr_scope *scope_array,
-				uint32_t *count)
+				uint8_t *ipv6addr_type, uint32_t *count)
 {
 	struct ifacaddr6 *ifaca;
 	uint32_t scope;
@@ -381,7 +374,6 @@ static int hdd_fill_ipv6_ac_addr(struct inet6_dev *idev,
 			qdf_mem_copy(ipv6_ac_addr[*count], &ifaca->aca_addr,
 				sizeof(ifaca->aca_addr));
 			ipv6addr_type[*count] = SIR_IPV6_ADDR_AC_TYPE;
-			scope_array[*count] = sir_get_ipv6_addr_scope(scope);
 			hdd_debug("Index %d scope = %s AC-Address: %pI6",
 				*count, (scope == IPV6_ADDR_SCOPE_LINKLOCAL) ?
 				"LINK LOCAL" : "GLOBAL", ipv6_ac_addr[*count]);
@@ -407,10 +399,6 @@ static void hdd_disable_ns_offload(hdd_adapter_t *adapter)
 	tSirHostOffloadReq offloadReq;
 	QDF_STATUS status;
 
-	qdf_mutex_acquire(&adapter->ns_offload_info_lock);
-	adapter->ns_offload_info.offload = false;
-	qdf_mutex_release(&adapter->ns_offload_info_lock);
-
 	qdf_mem_zero((void *)&offloadReq, sizeof(tSirHostOffloadReq));
 	hdd_wlan_offload_event(SIR_IPV6_NS_OFFLOAD, SIR_OFFLOAD_DISABLE);
 	offloadReq.enableOrDisable = SIR_OFFLOAD_DISABLE;
@@ -435,7 +423,6 @@ static void hdd_enable_ns_offload(hdd_adapter_t *adapter)
 	uint8_t ipv6_addr[SIR_MAC_NUM_TARGET_IPV6_NS_OFFLOAD_NA]
 					[SIR_MAC_IPV6_ADDR_LEN] = { {0,} };
 	uint8_t ipv6_addr_type[SIR_MAC_NUM_TARGET_IPV6_NS_OFFLOAD_NA] = { 0 };
-	enum sir_ipv6_addr_scope scope[SIR_MAC_NUM_TARGET_IPV6_NS_OFFLOAD_NA];
 	tSirHostOffloadReq offloadReq;
 	QDF_STATUS status;
 	uint32_t count = 0;
@@ -447,11 +434,8 @@ static void hdd_enable_ns_offload(hdd_adapter_t *adapter)
 		return;
 	}
 
-	qdf_mem_zero(scope, sizeof(scope));
-
 	/* Unicast Addresses */
-	err = hdd_fill_ipv6_uc_addr(in6_dev, ipv6_addr, ipv6_addr_type, scope,
-				    &count);
+	err = hdd_fill_ipv6_uc_addr(in6_dev, ipv6_addr, ipv6_addr_type, &count);
 	if (err) {
 		hdd_disable_ns_offload(adapter);
 		hdd_debug("Max supported addresses: disabling NS offload");
@@ -459,8 +443,7 @@ static void hdd_enable_ns_offload(hdd_adapter_t *adapter)
 	}
 
 	/* Anycast Addresses */
-	err = hdd_fill_ipv6_ac_addr(in6_dev, ipv6_addr, ipv6_addr_type, scope,
-				    &count);
+	err = hdd_fill_ipv6_ac_addr(in6_dev, ipv6_addr, ipv6_addr_type, &count);
 	if (err) {
 		hdd_disable_ns_offload(adapter);
 		hdd_debug("Max supported addresses: disabling NS offload");
@@ -497,7 +480,6 @@ static void hdd_enable_ns_offload(hdd_adapter_t *adapter)
 			SIR_IPV6_ADDR_VALID;
 		offloadReq.nsOffloadInfo.target_ipv6_addr_ac_type[i] =
 			ipv6_addr_type[i];
-		offloadReq.nsOffloadInfo.scope[i] = scope[i];
 
 		qdf_mem_copy(&offloadReq.params.hostIpv6Addr,
 			&offloadReq.nsOffloadInfo.targetIPv6Addr[i],
@@ -517,12 +499,6 @@ static void hdd_enable_ns_offload(hdd_adapter_t *adapter)
 
 	/* set number of ns offload address count */
 	offloadReq.num_ns_offload_count = count;
-
-	qdf_mutex_acquire(&adapter->ns_offload_info_lock);
-	adapter->ns_offload_info.offload = true;
-	adapter->ns_offload_info.num_ns_offload_count = count;
-	adapter->ns_offload_info.nsOffloadInfo = offloadReq.nsOffloadInfo;
-	qdf_mutex_release(&adapter->ns_offload_info_lock);
 
 	/* Configure the Firmware with this */
 	status = sme_set_host_offload(WLAN_HDD_GET_HAL_CTX(adapter),
@@ -1054,13 +1030,6 @@ QDF_STATUS hdd_conf_arp_offload(hdd_adapter_t *pAdapter, bool fenable)
 				hdd_err("Failed to enable HostOffload feature");
 				return QDF_STATUS_E_FAILURE;
 			}
-
-			qdf_mutex_acquire(&pAdapter->arp_offload_info_lock);
-			pAdapter->arp_offload_info.offload = fenable;
-			qdf_mem_copy(pAdapter->arp_offload_info.ipv4,
-				     offLoadRequest.params.hostIpv4Addr,
-				     SIR_IPV4_ADDR_LEN);
-			qdf_mutex_release(&pAdapter->arp_offload_info_lock);
 		} else {
 			hdd_debug("IP Address is not assigned");
 		}
@@ -1080,11 +1049,6 @@ QDF_STATUS hdd_conf_arp_offload(hdd_adapter_t *pAdapter, bool fenable)
 		hdd_err("Failure to disable host offload feature");
 		return QDF_STATUS_E_FAILURE;
 	}
-
-	qdf_mutex_acquire(&pAdapter->arp_offload_info_lock);
-	pAdapter->arp_offload_info.offload = fenable;
-	qdf_mutex_release(&pAdapter->arp_offload_info_lock);
-
 	return QDF_STATUS_SUCCESS;
 }
 
@@ -1324,8 +1288,7 @@ hdd_suspend_wlan(void (*callback)(void *callbackContext, bool suspended),
 		pAdapter = pAdapterNode->pAdapter;
 
 		/* stop all TX queues before suspend */
-		hdd_info("Disabling queues for dev mode %s",
-			 hdd_device_mode_to_string(pAdapter->device_mode));
+		hdd_info("Disabling queues");
 		wlan_hdd_netif_queue_control(pAdapter,
 					     WLAN_STOP_ALL_NETIF_QUEUE,
 					     WLAN_CONTROL_PATH);
@@ -1385,8 +1348,7 @@ static void hdd_resume_wlan(void)
 		pAdapter = pAdapterNode->pAdapter;
 
 		/* wake the tx queues */
-		hdd_info("Enabling queues for dev mode %s",
-			 hdd_device_mode_to_string(pAdapter->device_mode));
+		hdd_info("Enabling queues");
 		wlan_hdd_netif_queue_control(pAdapter,
 					WLAN_WAKE_ALL_NETIF_QUEUE,
 					WLAN_CONTROL_PATH);
@@ -1489,20 +1451,6 @@ QDF_STATUS hdd_wlan_shutdown(void)
 
 	hdd_debug("Invoking packetdump deregistration API");
 	wlan_deregister_txrx_packetdump();
-
-	/*
-	 * After SSR, FW clear its txrx stats. In host,
-	 * as adapter is intact so those counts are still
-	 * available. Now if agains Set stats command comes,
-	 * then host will increment its counts start from its
-	 * last saved value, i.e., count before SSR, and FW will
-	 * increment its count from 0. This will finally sends a
-	 * mismatch of packet counts b/w host and FW to framework
-	 * that will create ambiquity. Therfore, Resetting the host
-	 * counts here so that after SSR both FW and host start
-	 * increment their counts from 0.
-	 */
-	hdd_reset_all_adapters_connectivity_stats(pHddCtx);
 
 	hdd_reset_all_adapters(pHddCtx);
 
@@ -1996,7 +1944,7 @@ static int __wlan_hdd_cfg80211_suspend_wlan(struct wiphy *wiphy,
 		pAdapter = pAdapterNode->pAdapter;
 
 		if (wlan_hdd_validate_session_id(pAdapter->sessionId)) {
-			hdd_debug("invalid session id: %d", pAdapter->sessionId);
+			hdd_err("invalid session id: %d", pAdapter->sessionId);
 			goto next_adapter;
 		}
 

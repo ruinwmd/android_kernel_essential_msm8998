@@ -41,8 +41,6 @@
 #include <net/cfg80211.h>
 #include <linux/ieee80211.h>
 
-#define HDD_TIME_STRING_LEN 24
-
 /* Preprocessor Definitions and Constants */
 #ifdef FEATURE_WLAN_TDLS
 #define HDD_MAX_NUM_TDLS_STA          8
@@ -179,8 +177,6 @@ struct hdd_conn_flag {
  * @congestion: holds congestion percentage
  * @last_ssid: holds last ssid
  * @last_auth_type: holds last auth type
- * @auth_time: last authentication established time
- * @connect_time: last association established time
  */
 typedef struct connection_info_s {
 	eConnectionState connState;
@@ -215,9 +211,6 @@ typedef struct connection_info_s {
 	uint32_t cca;
 	tCsrSSIDInfo last_ssid;
 	eCsrAuthType last_auth_type;
-	char auth_time[HDD_TIME_STRING_LEN];
-	char connect_time[HDD_TIME_STRING_LEN];
-	enum phy_ch_width ch_width;
 } connection_info_t;
 
 /* Forward declarations */
@@ -390,27 +383,5 @@ static inline void hdd_save_gtk_params(hdd_adapter_t *adapter,
 {
 }
 #endif
-
-/**
- * hdd_copy_ht_caps()- copy ht caps info from roam info to
- *  hdd station context.
- * @hdd_ht_cap: pointer to Source ht_cap info of type ieee80211_ht_cap
- * @roam_ht_cap: pointer to roam ht_caps info
- *
- * Return: None
- */
-void hdd_copy_ht_caps(struct ieee80211_ht_cap *hdd_ht_cap,
-		      tDot11fIEHTCaps *roam_ht_cap);
-
-/**
- * hdd_copy_vht_caps()- copy vht caps info from roam info to
- *  hdd station context.
- * @hdd_vht_cap: pointer to Source vht_cap info of type ieee80211_vht_cap
- * @roam_vht_cap: pointer to roam vht_caps info
- *
- * Return: None
- */
-void hdd_copy_vht_caps(struct ieee80211_vht_cap *hdd_vht_cap,
-		       tDot11fIEVHTCaps *roam_vht_cap);
 
 #endif

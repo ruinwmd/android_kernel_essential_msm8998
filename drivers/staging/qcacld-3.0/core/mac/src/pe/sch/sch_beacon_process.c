@@ -860,7 +860,7 @@ static void __sch_beacon_process_for_session(tpAniSirGlobal mac_ctx,
 	if (sendProbeReq)
 		lim_send_probe_req_mgmt_frame(mac_ctx, &session->ssId,
 			session->bssId, session->currentOperChannel,
-			session->selfMacAddr, session->dot11mode, NULL, NULL);
+			session->selfMacAddr, session->dot11mode, 0, NULL);
 
 	if ((false == mac_ctx->sap.SapDfsInfo.is_dfs_cac_timer_running)
 	    && beaconParams.paramChangeBitmap) {
@@ -906,6 +906,8 @@ sch_beacon_process(tpAniSirGlobal mac_ctx, uint8_t *rx_pkt_info,
 		return;
 	}
 
+	if (bcn.ssidPresent)
+		bcn.ssId.ssId[bcn.ssId.length] = 0;
 	/*
 	 * First process the beacon in the context of any existing AP or BTAP
 	 * session. This takes cares of following two scenarios:

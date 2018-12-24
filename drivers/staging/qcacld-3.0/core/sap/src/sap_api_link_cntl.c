@@ -984,12 +984,10 @@ wlansap_roam_callback(void *ctx, tCsrRoamInfo *csr_roam_info, uint32_t roamId,
 		break;
 	case eCSR_ROAM_REMAIN_CHAN_READY:
 		/* roamId contains scan identifier */
-		if (csr_roam_info) {
-			sap_ctx->roc_ind_scan_id = csr_roam_info->roc_scan_id;
-			sap_signal_hdd_event(sap_ctx, csr_roam_info,
-					     eSAP_REMAIN_CHAN_READY,
-					     (void *) eSAP_STATUS_SUCCESS);
-		}
+		sap_ctx->roc_ind_scan_id = csr_roam_info->roc_scan_id;
+		sap_signal_hdd_event(sap_ctx, csr_roam_info,
+				     eSAP_REMAIN_CHAN_READY,
+				     (void *) eSAP_STATUS_SUCCESS);
 		break;
 	case eCSR_ROAM_DISCONNECT_ALL_P2P_CLIENTS:
 		sap_signal_hdd_event(sap_ctx, csr_roam_info,
@@ -1013,13 +1011,7 @@ wlansap_roam_callback(void *ctx, tCsrRoamInfo *csr_roam_info, uint32_t roamId,
 					FL("Ignore the Radar indication"));
 			break;
 		}
-		if (sap_ctx->sapsMachine != eSAP_STARTED &&
-		    sap_ctx->sapsMachine != eSAP_DFS_CAC_WAIT) {
-			QDF_TRACE(QDF_MODULE_ID_SAP, QDF_TRACE_LEVEL_INFO_HIGH,
-				  FL("Ignore Radar event in sap state %d"),
-				  sap_ctx->sapsMachine);
-			break;
-		}
+
 		if (sap_ctx->is_pre_cac_on) {
 			QDF_TRACE(QDF_MODULE_ID_SAP, QDF_TRACE_LEVEL_INFO_MED,
 				FL("sapdfs: Radar detect on pre cac:%d"),
@@ -1081,7 +1073,7 @@ wlansap_roam_callback(void *ctx, tCsrRoamInfo *csr_roam_info, uint32_t roamId,
 					  QDF_TRACE_LEVEL_ERROR,
 					  FL("sapdfs: no available channel for sapctx[%pK], StopBss"),
 					  pSapContext);
-				sap_signal_hdd_event(pSapContext, NULL,
+				sap_signal_hdd_event(sap_ctx, NULL,
 					eSAP_STOP_BSS_DUE_TO_NO_CHNL,
 					(void *) eSAP_STATUS_SUCCESS);
 			}
@@ -1106,7 +1098,11 @@ wlansap_roam_callback(void *ctx, tCsrRoamInfo *csr_roam_info, uint32_t roamId,
 				     eSAP_UPDATE_SCAN_RESULT,
 				     (void *) eSAP_STATUS_SUCCESS);
 		break;
-
+	case eCSR_ROAM_LOSTLINK_DETECTED:
+		sap_signal_hdd_event(sap_ctx, csr_roam_info,
+				     eSAP_STA_LOSTLINK_DETECTED,
+				     (void *)eSAP_STATUS_SUCCESS);
+		break;
 	default:
 		break;
 	}

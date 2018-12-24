@@ -3897,12 +3897,6 @@ struct reg_table_entry g_registry_table[] = {
 		     CFG_STA_SAP_SCC_ON_DFS_CHAN_MIN,
 		     CFG_STA_SAP_SCC_ON_DFS_CHAN_MAX),
 
-	REG_VARIABLE(CFG_STA_SAP_SCC_ON_LTE_COEX_CHAN, WLAN_PARAM_HexInteger,
-		     struct hdd_config, sta_sap_scc_on_lte_coex_chan,
-		     VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK_ASSUME_DEFAULT,
-		     CFG_STA_SAP_SCC_ON_LTE_COEX_CHAN_DEFAULT,
-		     CFG_STA_SAP_SCC_ON_LTE_COEX_CHAN_MIN,
-		     CFG_STA_SAP_SCC_ON_LTE_COEX_CHAN_MAX),
 
 #ifdef FEATURE_WLAN_SCAN_PNO
 	REG_VARIABLE(CFG_PNO_CHANNEL_PREDICTION_NAME, WLAN_PARAM_Integer,
@@ -5551,22 +5545,6 @@ struct reg_table_entry g_registry_table[] = {
 		     CFG_ENABLE_RTT_MAC_RANDOMIZATION_DEFAULT,
 		     CFG_ENABLE_RTT_MAC_RANDOMIZATION_MIN,
 		     CFG_ENABLE_RTT_MAC_RANDOMIZATION_MAX),
-
-	REG_VARIABLE(CFG_ENABLE_SECONDARY_RATE_NAME,
-		     WLAN_PARAM_HexInteger,
-		     struct hdd_config, enable_secondary_rate,
-		     VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK_ASSUME_DEFAULT,
-		     CFG_ENABLE_SECONDARY_RATE_DEFAULT,
-		     CFG_ENABLE_SECONDARY_RATE_MIN,
-		     CFG_ENABLE_SECONDARY_RATE_MAX),
-
-	REG_VARIABLE(CFG_ENABLE_UNIT_TEST_FRAMEWORK_NAME,
-		     WLAN_PARAM_Integer,
-		     struct hdd_config, is_unit_test_framework_enabled,
-		     VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK_ASSUME_DEFAULT,
-		     CFG_ENABLE_UINT_TEST_FRAMEWORK_DEFAULT,
-		     CFG_ENABLE_UNIT_TEST_FRAMEWORK_MIN,
-		     CFG_ENABLE_UNIT_TEST_FRAMEWORK_MAX),
 };
 
 /**
@@ -7022,9 +7000,6 @@ void hdd_cfg_print(hdd_context_t *pHddCtx)
 	hdd_debug("Name = [%s] value = [%u]",
 		  CFG_STA_SAP_SCC_ON_DFS_CHAN,
 		  pHddCtx->config->sta_sap_scc_on_dfs_chan);
-	hdd_debug("Name = [%s] value = [%u]",
-		  CFG_STA_SAP_SCC_ON_LTE_COEX_CHAN,
-		  pHddCtx->config->sta_sap_scc_on_lte_coex_chan);
 #ifdef FEATURE_WLAN_SCAN_PNO
 	hdd_debug("Name = [%s] Value = [%u]",
 		   CFG_PNO_CHANNEL_PREDICTION_NAME,
@@ -7445,12 +7420,6 @@ void hdd_cfg_print(hdd_context_t *pHddCtx)
 	hdd_debug("Name = [%s] value = [0x%x]",
 		  CFG_CHANNEL_SELECT_LOGIC_CONC_NAME,
 		  pHddCtx->config->channel_select_logic_conc);
-	hdd_debug("Name = [%s] value = [0x%x]",
-		  CFG_ENABLE_SECONDARY_RATE_NAME,
-		  pHddCtx->config->enable_secondary_rate);
-	hdd_debug("Name = [%s] value = [0x%x]",
-		  CFG_ENABLE_UNIT_TEST_FRAMEWORK_NAME,
-		  pHddCtx->config->is_unit_test_framework_enabled);
 }
 
 /**

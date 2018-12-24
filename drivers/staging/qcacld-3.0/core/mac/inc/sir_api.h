@@ -1747,7 +1747,6 @@ typedef struct sSirSmeDisassocInd {
 typedef struct sSirSmeDisassocCnf {
 	uint16_t messageType;   /* eWNI_SME_DISASSOC_CNF */
 	uint16_t length;
-	uint8_t sme_session_id;
 	tSirResultCodes statusCode;
 	struct qdf_mac_addr bssid;
 	struct qdf_mac_addr peer_macaddr;
@@ -2903,24 +2902,6 @@ typedef struct sSirUpdateAPWPARSNIEsReq {
 #define SIR_OFFLOAD_ENABLE                          1
 
 #ifdef WLAN_NS_OFFLOAD
-/**
- * enum sir_ipv6_addr_scope - Internal identification of IPv6 addr scope
- * @SIR_IPV6_ADDR_SCOPE_INVALID: invalid scope
- * @SIR_IPV6_ADDR_SCOPE_NODELOCAL: node local scope
- * @SIR_IPV6_ADDR_SCOPE_LINKLOCAL: link local scope
- * @SIR_IPV6_ADDR_SCOPE_SITELOCAL: site local scope
- * @SIR_IPV6_ADDR_SCOPE_ORGLOCAL: org local scope
- * @SIR_IPV6_ADDR_SCOPE_GLOBAL: global scope
- */
-enum sir_ipv6_addr_scope {
-	SIR_IPV6_ADDR_SCOPE_INVALID = 0,
-	SIR_IPV6_ADDR_SCOPE_NODELOCAL = 1,
-	SIR_IPV6_ADDR_SCOPE_LINKLOCAL = 2,
-	SIR_IPV6_ADDR_SCOPE_SITELOCAL = 3,
-	SIR_IPV6_ADDR_SCOPE_ORGLOCAL = 4,
-	SIR_IPV6_ADDR_SCOPE_GLOBAL = 5
-};
-
 typedef struct sSirNsOffloadReq {
 	uint8_t srcIPv6Addr[SIR_MAC_IPV6_ADDR_LEN];
 	uint8_t selfIPv6Addr[SIR_MAC_NUM_TARGET_IPV6_NS_OFFLOAD_NA][SIR_MAC_IPV6_ADDR_LEN];
@@ -2930,35 +2911,7 @@ typedef struct sSirNsOffloadReq {
 	uint8_t targetIPv6AddrValid[SIR_MAC_NUM_TARGET_IPV6_NS_OFFLOAD_NA];
 	uint8_t target_ipv6_addr_ac_type[SIR_MAC_NUM_TARGET_IPV6_NS_OFFLOAD_NA];
 	uint8_t slotIdx;
-	enum sir_ipv6_addr_scope scope[SIR_MAC_NUM_TARGET_IPV6_NS_OFFLOAD_NA];
 } tSirNsOffloadReq, *tpSirNsOffloadReq;
-
-/**
- * sir_get_ipv6_addr_scope() - Convert linux specific IPv6 addr scope to
- *                             WLAN driver specific value
- * @scope: linux specific IPv6 addr scope
- *
- * Return: WLAN driver sepcific IPv6 addr scope
- */
-static inline
-enum sir_ipv6_addr_scope
-sir_get_ipv6_addr_scope(uint32_t ipv6_scope)
-{
-	switch (ipv6_scope) {
-	case IPV6_ADDR_SCOPE_NODELOCAL:
-		return SIR_IPV6_ADDR_SCOPE_NODELOCAL;
-	case IPV6_ADDR_SCOPE_LINKLOCAL:
-		return SIR_IPV6_ADDR_SCOPE_LINKLOCAL;
-	case IPV6_ADDR_SCOPE_SITELOCAL:
-		return SIR_IPV6_ADDR_SCOPE_SITELOCAL;
-	case IPV6_ADDR_SCOPE_ORGLOCAL:
-		return SIR_IPV6_ADDR_SCOPE_ORGLOCAL;
-	case IPV6_ADDR_SCOPE_GLOBAL:
-		return SIR_IPV6_ADDR_SCOPE_GLOBAL;
-	default:
-		return SIR_IPV6_ADDR_SCOPE_INVALID;
-	}
-}
 #endif /* WLAN_NS_OFFLOAD */
 
 typedef struct sSirHostOffloadReq {
@@ -4594,17 +4547,6 @@ struct sir_peer_info_ext_resp {
 struct sir_peer_sta_info {
 	uint8_t sta_num;
 	struct sir_peer_info info[MAX_PEER_STA];
-};
-
-/**
- * @sta_num: number of peer station which has valid info
- * @info: peer extended information
- *
- * all SAP peer station's extended information retrieved
- */
-struct sir_peer_sta_ext_info {
-	uint8_t sta_num;
-	struct sir_peer_info_ext info[MAX_PEER_STA];
 };
 
 typedef struct sSirAddPeriodicTxPtrn {
@@ -7372,14 +7314,6 @@ struct sir_wake_lock_stats {
  * @pno_match: pno match wakeup count
  * @oem_response: oem response wakeup count
  * @pwr_save_fail_detected: pwr save fail detected wakeup count
- * @mgmt_assoc: association request management frame
- * @mgmt_disassoc: disassociation management frame
- * @mgmt_assoc_resp: association response management frame
- * @mgmt_reassoc: reassociate request management frame
- * @mgmt_reassoc_resp: reassociate response management frame
- * @mgmt_auth: authentication managament frame
- * @mgmt_deauth: deauthentication management frame
- * @mgmt_action: action managament frame
  */
 struct sir_vdev_wow_stats {
 	uint32_t ucast;
@@ -7398,14 +7332,6 @@ struct sir_vdev_wow_stats {
 	uint32_t pno_match;
 	uint32_t oem_response;
 	uint32_t pwr_save_fail_detected;
-	uint32_t mgmt_assoc;
-	uint32_t mgmt_disassoc;
-	uint32_t mgmt_assoc_resp;
-	uint32_t mgmt_reassoc;
-	uint32_t mgmt_reassoc_resp;
-	uint32_t mgmt_auth;
-	uint32_t mgmt_deauth;
-	uint32_t mgmt_action;
 };
 
 /**
@@ -8446,20 +8372,4 @@ struct sir_limit_off_chan {
 	uint32_t rest_time;
 	bool skip_dfs_chans;
 };
-
-typedef void (*roam_scan_stats_cb)(void *context,
-				  struct wmi_roam_scan_stats_res *res);
-
-/**
- * struct sir_roam_scan_stats - Stores roam scan context
- * @vdev_id: vdev id
- * @cb: callback to be invoked for roam scan stats response
- * @context: context of callback
- */
-struct sir_roam_scan_stats {
-	uint32_t vdev_id;
-	roam_scan_stats_cb cb;
-	void *context;
-};
-
 #endif /* __SIR_API_H */

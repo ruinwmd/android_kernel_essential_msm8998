@@ -358,8 +358,7 @@ __cds_cpu_hotplug_notify(struct notifier_block *block,
 	if ((NULL == pSchedContext) || (NULL == pSchedContext->ol_rx_thread))
 		return NOTIFY_OK;
 
-	if (cds_is_load_or_unload_in_progress() ||
-	    cds_is_module_stop_in_progress() || cds_is_driver_recovering())
+	if (cds_is_load_or_unload_in_progress())
 		return NOTIFY_OK;
 
 	num_cpus = num_possible_cpus();
@@ -619,7 +618,7 @@ static void cds_mc_thread_watchdog_notify(cds_msg_t *msg)
 }
 
 #ifdef CONFIG_SLUB_DEBUG_ON
-static void cds_mc_thread_watchdog_timeout(unsigned long arg)
+static void cds_mc_thread_watchdog_timeout(void *arg)
 {
 	cds_msg_t *msg = *(cds_msg_t **)arg;
 
@@ -639,7 +638,7 @@ static void cds_mc_thread_watchdog_timeout(unsigned long arg)
 	QDF_BUG(0);
 }
 #else
-static inline void cds_mc_thread_watchdog_timeout(unsigned long arg)
+static inline void cds_mc_thread_watchdog_timeout(void *arg)
 {
 	cds_msg_t *msg = *(cds_msg_t **)arg;
 

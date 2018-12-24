@@ -2983,6 +2983,7 @@ tSirRetStatus lim_process_sme_tdls_add_sta_req(tpAniSirGlobal pMac,
 		goto lim_tdls_add_sta_error;
 	}
 
+	pMac->lim.gLimAddStaTdls = true;
 
 	/* To start with, send add STA request to HAL */
 	if (eSIR_FAILURE == lim_tdls_setup_add_sta(pMac, pAddStaReq, psessionEntry)) {
@@ -3052,8 +3053,8 @@ tSirRetStatus lim_process_sme_tdls_del_sta_req(tpAniSirGlobal pMac,
 		goto lim_tdls_del_sta_error;
 	}
 
-	if (lim_tdls_del_sta(pMac, pDelStaReq->peermac, psessionEntry, true))
-		return eSIR_SUCCESS;
+	lim_tdls_del_sta(pMac, pDelStaReq->peermac, psessionEntry, true);
+	return eSIR_SUCCESS;
 
 lim_tdls_del_sta_error:
 	lim_send_sme_tdls_del_sta_rsp(pMac, psessionEntry->smeSessionId,

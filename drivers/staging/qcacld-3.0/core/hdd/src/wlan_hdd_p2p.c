@@ -53,7 +53,6 @@
 #include "cds_sched.h"
 #include "cds_concurrency.h"
 #include "cds_utils.h"
-#include "wlan_hdd_request_manager.h"
 
 /* Ms to Time Unit Micro Sec */
 #define MS_TO_TU_MUS(x)   ((x) * 1024)
@@ -181,10 +180,6 @@ static bool hdd_is_p2p_go_cnf_frame(const u8 *buf, uint32_t len)
 		return false;
 }
 
-struct random_mac_priv {
-	bool set_random_addr;
-};
-
 /**
  * hdd_random_mac_callback() - Callback invoked from wmi layer
  * @set_random_addr: Status of random mac filter set operation
@@ -197,20 +192,31 @@ struct random_mac_priv {
  */
 static void hdd_random_mac_callback(bool set_random_addr, void *context)
 {
-	struct hdd_request *request;
-	struct random_mac_priv *priv;
+	struct random_mac_context *rnd_ctx;
+	hdd_adapter_t *adapter;
 
-	request = hdd_request_get(context);
-	if (!request) {
-		hdd_err("invalid request");
+	if (!context) {
+		hdd_err("Bad param, pContext");
 		return;
 	}
 
-	priv = hdd_request_priv(request);
-	priv->set_random_addr = set_random_addr;
+	rnd_ctx = context;
+	adapter = rnd_ctx->adapter;
 
-	hdd_request_complete(request);
-	hdd_request_put(request);
+	spin_lock(&hdd_context_lock);
+	if ((!adapter) ||
+	    (rnd_ctx->magic != ACTION_FRAME_RANDOM_CONTEXT_MAGIC)) {
+		spin_unlock(&hdd_context_lock);
+		hdd_err("Invalid context, magic [%08x]", rnd_ctx->magic);
+		return;
+	}
+
+	rnd_ctx->magic = 0;
+	if (set_random_addr)
+		rnd_ctx->set_random_addr = true;
+
+	complete(&rnd_ctx->random_mac_completion);
+	spin_unlock(&hdd_context_lock);
 }
 
 /**
@@ -225,17 +231,11 @@ static bool hdd_set_random_mac(hdd_adapter_t *adapter,
 			       uint8_t *random_mac_addr,
 			       uint32_t freq)
 {
+	struct random_mac_context context;
 	hdd_context_t *hdd_ctx;
 	QDF_STATUS sme_status;
 	unsigned long rc;
-	void *cookie;
 	bool status = false;
-	struct hdd_request     *request;
-	struct random_mac_priv *priv;
-	static const struct hdd_request_params params = {
-		.priv_size = sizeof(*priv),
-		.timeout_ms = WLAN_WAIT_TIME_SET_RND,
-	};
 
 	ENTER();
 	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
@@ -244,33 +244,30 @@ static bool hdd_set_random_mac(hdd_adapter_t *adapter,
 		return false;
 	}
 
-	request = hdd_request_alloc(&params);
-	if (!request) {
-		hdd_err("Request allocation failure");
-		return false;
-	}
-
-	cookie = hdd_request_cookie(request);
+	init_completion(&context.random_mac_completion);
+	context.adapter = adapter;
+	context.magic = ACTION_FRAME_RANDOM_CONTEXT_MAGIC;
+	context.set_random_addr = false;
 
 	sme_status = sme_set_random_mac(hdd_ctx->hHal, hdd_random_mac_callback,
 				     adapter->sessionId, random_mac_addr, freq,
-				     cookie);
+				     &context);
 
 	if (sme_status != QDF_STATUS_SUCCESS) {
 		hdd_err("Unable to set random mac");
 	} else {
-		rc = hdd_request_wait_for_response(request);
-		if (rc) {
+		rc = wait_for_completion_timeout(&context.random_mac_completion,
+				msecs_to_jiffies(WLAN_WAIT_TIME_SET_RND));
+		if (!rc)
 			hdd_err("SME timed out while setting random mac");
-		} else {
-			priv = hdd_request_priv(request);
-			status = priv->set_random_addr;
-		}
 	}
 
-	hdd_request_put(request);
-	EXIT();
+	spin_lock(&hdd_context_lock);
+	context.magic = 0;
+	status = context.set_random_addr;
+	spin_unlock(&hdd_context_lock);
 
+	EXIT();
 	return status;
 }
 
@@ -750,7 +747,8 @@ QDF_STATUS wlan_hdd_remain_on_channel_callback(tHalHandle hHal, void *pCtx,
 		cfg80211_remain_on_channel_expired(
 			pRemainChanCtx->dev->
 			ieee80211_ptr,
-			(u64)pRemainChanCtx->id,
+			pRemainChanCtx->
+			cookie,
 			&pRemainChanCtx->chan,
 			GFP_KERNEL);
 		pAdapter->last_roc_ts =
@@ -791,7 +789,6 @@ QDF_STATUS wlan_hdd_remain_on_channel_callback(tHalHandle hHal, void *pCtx,
 			pRemainChanCtx->action_pkt_buff.frame_ptr = NULL;
 			pRemainChanCtx->action_pkt_buff.frame_length = 0;
 		}
-		qdf_idr_remove(&hdd_ctx->p2p_idr, pRemainChanCtx->id);
 	}
 	qdf_mem_free(pRemainChanCtx);
 	mutex_unlock(&cfgState->remain_on_chan_ctx_lock);
@@ -1312,13 +1309,13 @@ static void wlan_hdd_indicate_roc_drop(hdd_adapter_t *adapter,
 	hdd_debug("indicate roc drop to userspace");
 	cfg80211_ready_on_channel(
 			adapter->dev->ieee80211_ptr,
-			(u64)ctx->id,
+			(uintptr_t)ctx,
 			&ctx->chan,
 			ctx->duration, GFP_KERNEL);
 
 	cfg80211_remain_on_channel_expired(
 			ctx->dev->ieee80211_ptr,
-			(u64)ctx->id,
+			ctx->cookie,
 			&ctx->chan,
 			GFP_KERNEL);
 }
@@ -1471,7 +1468,6 @@ static int wlan_hdd_request_remain_on_channel(struct wiphy *wiphy,
 	hdd_adapter_t *sta_adapter;
 	int ret;
 	int status = 0;
-	int roc_id;
 
 	hdd_debug("Device_mode %s(%d)",
 		   hdd_device_mode_to_string(pAdapter->device_mode),
@@ -1504,18 +1500,12 @@ static int wlan_hdd_request_remain_on_channel(struct wiphy *wiphy,
 		return -ENOMEM;
 	}
 
-	if (QDF_STATUS_SUCCESS != qdf_idr_alloc(&pHddCtx->p2p_idr,
-		pRemainChanCtx, &roc_id)) {
-		hdd_err("alloc id fail");
-		qdf_mem_free(pRemainChanCtx);
-		return -EFAULT;
-	}
 	qdf_mem_copy(&pRemainChanCtx->chan, chan,
 		     sizeof(struct ieee80211_channel));
 	pRemainChanCtx->duration = duration;
 	pRemainChanCtx->dev = dev;
-	*cookie = (u64)roc_id;
-	pRemainChanCtx->id = roc_id;
+	*cookie = (uintptr_t) pRemainChanCtx;
+	pRemainChanCtx->cookie = *cookie;
 	pRemainChanCtx->rem_on_chan_request = request_type;
 	pRemainChanCtx->action_pkt_buff.freq = 0;
 	pRemainChanCtx->action_pkt_buff.frame_ptr = NULL;
@@ -1683,7 +1673,8 @@ void hdd_remain_chan_ready_handler(hdd_adapter_t *pAdapter,
 			cfg80211_ready_on_channel(
 				pAdapter->dev->
 				ieee80211_ptr,
-				(u64)pRemainChanCtx->id,
+				(uintptr_t)
+				pRemainChanCtx,
 				&pRemainChanCtx->chan,
 				pRemainChanCtx->
 				duration, GFP_KERNEL);
@@ -1737,7 +1728,6 @@ __wlan_hdd_cfg80211_cancel_remain_on_channel(struct wiphy *wiphy,
 	hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	hdd_cfg80211_state_t *cfgState = WLAN_HDD_GET_CFG_STATE_PTR(pAdapter);
 	hdd_remain_on_chan_ctx_t *pRemainChanCtx;
-	hdd_remain_on_chan_ctx_t *cur_ctx;
 	hdd_context_t *pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
 	int status;
 	int qdf_status;
@@ -1762,17 +1752,10 @@ __wlan_hdd_cfg80211_cancel_remain_on_channel(struct wiphy *wiphy,
 
 	if (0 != status)
 		return status;
-
-	if (QDF_STATUS_SUCCESS != qdf_idr_find(&pHddCtx->p2p_idr,
-		(int32_t)cookie, (void **)&cur_ctx)) {
-		hdd_debug("failed to find cookie, 0x%llx", cookie);
-		return -EFAULT;
-	}
-
 	qdf_spin_lock(&pHddCtx->hdd_roc_req_q_lock);
 	list_for_each_safe(tmp, q, &pHddCtx->hdd_roc_req_q.anchor) {
 		curr_roc_req = list_entry(tmp, hdd_roc_req_t, node);
-		if (curr_roc_req->pRemainChanCtx == cur_ctx) {
+		if ((uintptr_t) curr_roc_req->pRemainChanCtx == cookie) {
 			qdf_status = qdf_list_remove_node(&pHddCtx->hdd_roc_req_q,
 						      (qdf_list_node_t *)
 						      curr_roc_req);
@@ -1792,15 +1775,15 @@ __wlan_hdd_cfg80211_cancel_remain_on_channel(struct wiphy *wiphy,
 	pRemainChanCtx = cfgState->remain_on_chan_ctx;
 
 	if (pRemainChanCtx) {
-		hdd_debug("action_id = %x, roc id = %x, cookie = %08llx",
-				cfgState->action_id, pRemainChanCtx->id,
+		hdd_debug("action_cookie = %08llx, roc cookie = %08llx, cookie = %08llx",
+				cfgState->action_cookie, pRemainChanCtx->cookie,
 				cookie);
 
-		if (pRemainChanCtx->id == (int32_t)cookie) {
+		if (pRemainChanCtx->cookie == cookie) {
 			/* request to cancel on-going roc */
 			if (cfgState->buf) {
 				/* Tx frame pending */
-				if (cfgState->action_id != (int32_t)cookie) {
+				if (cfgState->action_cookie != cookie) {
 					hdd_debug("Cookie matched with RoC cookie but not with tx cookie, indicate expired event for roc");
 					/* RoC was extended to accomodate the tx frame */
 					if (REMAIN_ON_CHANNEL_REQUEST ==
@@ -1809,21 +1792,21 @@ __wlan_hdd_cfg80211_cancel_remain_on_channel(struct wiphy *wiphy,
 					cfg80211_remain_on_channel_expired(
 							pRemainChanCtx->dev->
 							ieee80211_ptr,
-							(u64)pRemainChanCtx->id,
+							pRemainChanCtx->cookie,
 							&pRemainChanCtx->chan,
 							GFP_KERNEL);
 					}
 					pRemainChanCtx->rem_on_chan_request =
 						OFF_CHANNEL_ACTION_TX;
-					pRemainChanCtx->id =
-						cfgState->action_id;
+					pRemainChanCtx->cookie =
+						cfgState->action_cookie;
 					mutex_unlock(&cfgState->
 						remain_on_chan_ctx_lock);
 					return 0;
 				}
 			}
-		} else if (cfgState->buf && cfgState->action_id ==
-				(int32_t)cookie) {
+		} else if (cfgState->buf && cfgState->action_cookie ==
+				cookie) {
 			mutex_unlock(&cfgState->remain_on_chan_ctx_lock);
 			hdd_debug("Cookie not matched with RoC cookie but matched with tx cookie, cleanup action frame");
 			/*free the buf and return 0*/
@@ -1957,7 +1940,6 @@ static int __wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 	uint8_t home_ch = 0;
 	bool enb_random_mac = false;
 	uint32_t mgmt_hdr_len = sizeof(struct ieee80211_hdr_3addr);
-	int32_t mgmt_id;
 
 	ENTER();
 
@@ -2308,19 +2290,12 @@ send_frame:
 		mutex_lock(&cfgState->remain_on_chan_ctx_lock);
 
 		if (cfgState->remain_on_chan_ctx) {
-			cfgState->action_id =
-				cfgState->remain_on_chan_ctx->id;
-			*cookie = cfgState->action_id;
+			cfgState->action_cookie =
+				cfgState->remain_on_chan_ctx->cookie;
+			*cookie = cfgState->action_cookie;
 		} else {
-			if (QDF_STATUS_SUCCESS != qdf_idr_alloc(
-					&pHddCtx->p2p_idr,
-					cfgState->buf, &mgmt_id)) {
-				hdd_err("alloc id fail");
-				goto err;
-			}
-
-			*cookie = (u64)mgmt_id;
-			cfgState->action_id = mgmt_id;
+			*cookie = (uintptr_t) cfgState->buf;
+			cfgState->action_cookie = *cookie;
 		}
 
 		mutex_unlock(&cfgState->remain_on_chan_ctx_lock);
@@ -2413,16 +2388,10 @@ err:
 	}
 	return 0;
 err_rem_channel:
-	if (QDF_STATUS_SUCCESS != qdf_idr_alloc(&pHddCtx->p2p_idr,
-		cfgState, &mgmt_id))
-		mgmt_id = 0;
-
-	*cookie = (u64)mgmt_id;
+	*cookie = (uintptr_t) cfgState;
 	cfg80211_mgmt_tx_status(
 		pAdapter->dev->ieee80211_ptr,
 		*cookie, buf, len, false, GFP_KERNEL);
-	qdf_idr_remove(&pHddCtx->p2p_idr, mgmt_id);
-
 	EXIT();
 	return 0;
 }
@@ -2505,14 +2474,11 @@ int wlan_hdd_cfg80211_mgmt_tx_cancel_wait(struct wiphy *wiphy,
 void hdd_send_action_cnf(hdd_adapter_t *pAdapter, bool actionSendSuccess)
 {
 	hdd_cfg80211_state_t *cfgState = WLAN_HDD_GET_CFG_STATE_PTR(pAdapter);
-	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(pAdapter);
 
 	cfgState->actionFrmState = HDD_IDLE;
 
-	if (NULL == cfgState->buf) {
-		qdf_idr_remove(&hdd_ctx->p2p_idr, cfgState->action_id);
+	if (NULL == cfgState->buf)
 		return;
-	}
 
 	if (cfgState->is_go_neg_ack_received) {
 
@@ -2525,7 +2491,6 @@ void hdd_send_action_cnf(hdd_adapter_t *pAdapter, bool actionSendSuccess)
 		 */
 		hdd_debug("Drop the pending ack received in cfgState->actionFrmState %d",
 				cfgState->actionFrmState);
-		qdf_idr_remove(&hdd_ctx->p2p_idr, cfgState->action_id);
 		return;
 	}
 
@@ -2539,11 +2504,10 @@ void hdd_send_action_cnf(hdd_adapter_t *pAdapter, bool actionSendSuccess)
 	 */
 	cfg80211_mgmt_tx_status(
 		pAdapter->dev->ieee80211_ptr,
-		(u64)cfgState->action_id,
+		cfgState->action_cookie,
 		cfgState->buf, cfgState->len,
 		actionSendSuccess, GFP_KERNEL);
 
-	qdf_idr_remove(&hdd_ctx->p2p_idr, cfgState->action_id);
 	qdf_mem_free(cfgState->buf);
 	cfgState->buf = NULL;
 
@@ -2838,7 +2802,6 @@ wlan_hdd_allow_sap_add(hdd_context_t *hdd_ctx,
 		adapter = adapter_node->pAdapter;
 		if (adapter && adapter->device_mode == QDF_SAP_MODE &&
 		    test_bit(NET_DEVICE_REGISTERED, &adapter->event_flags) &&
-		    adapter->dev &&
 		    !strncmp(adapter->dev->name, name, IFNAMSIZ)) {
 			beacon_data_t *beacon = adapter->sessionCtx.ap.beacon;
 
@@ -2847,7 +2810,7 @@ wlan_hdd_allow_sap_add(hdd_context_t *hdd_ctx,
 				adapter->sessionCtx.ap.beacon = NULL;
 				qdf_mem_free(beacon);
 			}
-			if (adapter->dev->ieee80211_ptr) {
+			if (adapter->dev && adapter->dev->ieee80211_ptr) {
 				*sap_dev = adapter->dev->ieee80211_ptr;
 				return false;
 			}

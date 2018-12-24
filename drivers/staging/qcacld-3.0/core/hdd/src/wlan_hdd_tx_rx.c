@@ -47,7 +47,6 @@
 #include <net/cfg80211.h>
 #include <net/ieee80211_radiotap.h>
 #include "sap_api.h"
-#include "sme_power_save_api.h"
 #include "wlan_hdd_wmm.h"
 #include "wlan_hdd_tdls.h"
 #include <wlan_hdd_ipa.h>
@@ -507,56 +506,6 @@ static void hdd_get_transmit_sta_id(hdd_adapter_t *adapter,
 }
 
 /**
- * hdd_clear_tx_rx_connectivity_stats() - clear connectivity stats
- * @hdd_ctx: pointer to HDD Station Context
- *
- * Return: None
- */
-static void hdd_clear_tx_rx_connectivity_stats(hdd_adapter_t *adapter)
-{
-	QDF_TRACE(QDF_MODULE_ID_HDD_DATA, QDF_TRACE_LEVEL_DEBUG,
-		"Clear txrx connectivity stats");
-	qdf_mem_zero(&adapter->hdd_stats.hdd_arp_stats,
-		     sizeof(adapter->hdd_stats.hdd_arp_stats));
-	qdf_mem_zero(&adapter->hdd_stats.hdd_dns_stats,
-		     sizeof(adapter->hdd_stats.hdd_dns_stats));
-	qdf_mem_zero(&adapter->hdd_stats.hdd_tcp_stats,
-		     sizeof(adapter->hdd_stats.hdd_tcp_stats));
-	qdf_mem_zero(&adapter->hdd_stats.hdd_icmpv4_stats,
-		     sizeof(adapter->hdd_stats.hdd_icmpv4_stats));
-	adapter->pkt_type_bitmap = 0;
-	adapter->track_arp_ip = 0;
-	qdf_mem_zero(adapter->dns_payload, adapter->track_dns_domain_len);
-	adapter->track_dns_domain_len = 0;
-	adapter->track_src_port = 0;
-	adapter->track_dest_port = 0;
-	adapter->track_dest_ipv4 = 0;
-}
-
-void hdd_reset_all_adapters_connectivity_stats(hdd_context_t *hdd_ctx)
-{
-	hdd_adapter_list_node_t *adapterNode = NULL, *pNext = NULL;
-	QDF_STATUS status;
-	hdd_adapter_t *adapter;
-
-	ENTER();
-
-	status = hdd_get_front_adapter(hdd_ctx, &adapterNode);
-
-	while (NULL != adapterNode && QDF_STATUS_SUCCESS == status) {
-		adapter = adapterNode->pAdapter;
-		hdd_clear_tx_rx_connectivity_stats(adapter);
-
-		status = hdd_get_next_adapter(hdd_ctx, adapterNode, &pNext);
-		adapterNode = pNext;
-	}
-
-	EXIT();
-
-}
-
-
-/**
  * hdd_tx_rx_is_dns_domain_name_match() - function to check whether dns
  * domain name in the received skb matches with the tracking dns domain
  * name or not
@@ -589,13 +538,15 @@ void hdd_tx_rx_collect_connectivity_stats_info(struct sk_buff *skb,
 			uint8_t *pkt_type)
 {
 	uint32_t pkt_type_bitmap;
-	int errno;
 	hdd_adapter_t *adapter = NULL;
 
 	adapter = (hdd_adapter_t *)context;
-	errno = hdd_validate_adapter(adapter);
-	if (errno)
+	if (unlikely(adapter->magic != WLAN_HDD_ADAPTER_MAGIC)) {
+		QDF_TRACE(QDF_MODULE_ID_HDD_DATA, QDF_TRACE_LEVEL_ERROR,
+			  "Magic cookie(%x) for adapter sanity verification is invalid",
+			  adapter->magic);
 		return;
+	}
 
 	/* ARP tracking is done already. */
 	pkt_type_bitmap = adapter->pkt_type_bitmap;
@@ -826,12 +777,7 @@ static inline bool hdd_is_tx_allowed(struct sk_buff *skb, uint8_t peer_id)
 	void *pdev = cds_get_context(QDF_MODULE_ID_TXRX);
 	void *peer;
 
-	if (qdf_unlikely(NULL == pdev)) {
-		QDF_TRACE(QDF_MODULE_ID_HDD_DATA, QDF_TRACE_LEVEL_ERROR,
-			  "%s: pdev is NULL", __func__);
-		QDF_ASSERT(pdev);
-		return false;
-	}
+	QDF_ASSERT(pdev);
 	peer = ol_txrx_peer_find_by_local_id(pdev, peer_id);
 
 	if (peer == NULL) {
@@ -844,8 +790,7 @@ static inline bool hdd_is_tx_allowed(struct sk_buff *skb, uint8_t peer_id)
 	if (OL_TXRX_PEER_STATE_AUTH == peer_state)
 		return true;
 	else if (OL_TXRX_PEER_STATE_CONN == peer_state &&
-			(ntohs(skb->protocol) == HDD_ETHERTYPE_802_1_X
-			|| IS_HDD_ETHERTYPE_WAI(skb)))
+			ntohs(skb->protocol) == HDD_ETHERTYPE_802_1_X)
 		return true;
 	DPTRACE(qdf_dp_trace(skb, QDF_DP_TRACE_DROP_PACKET_RECORD,
 				(uint8_t *)skb->data,
@@ -935,10 +880,8 @@ static netdev_tx_t __hdd_hard_start_xmit(struct sk_buff *skb,
 
 	if (!qdf_nbuf_ipa_owned_get(skb)) {
 		skb = hdd_skb_orphan(pAdapter, skb);
-		if (!skb) {
-			++pAdapter->hdd_stats.hddTxRxStats.tx_unshare_failed;
+		if (!skb)
 			goto drop_pkt_accounting;
-		}
 	}
 
 	/*
@@ -1053,20 +996,6 @@ static netdev_tx_t __hdd_hard_start_xmit(struct sk_buff *skb,
 		goto drop_pkt_and_release_skb;
 	}
 	if (!hdd_is_tx_allowed(skb, STAId)) {
-		QDF_TRACE(QDF_MODULE_ID_HDD_DATA,
-			  QDF_TRACE_LEVEL_INFO_HIGH,
-			  "%s: Tx is not allowed. drop the pkt",
-			  __func__);
-		++pAdapter->hdd_stats.hddTxRxStats.txXmitDroppedAC[ac];
-		goto drop_pkt_and_release_skb;
-	}
-
-	/* check whether need to linearize skb, like non-linear udp data */
-	if (hdd_skb_nontso_linearize(skb) != QDF_STATUS_SUCCESS) {
-		QDF_TRACE(QDF_MODULE_ID_HDD_DATA,
-			  QDF_TRACE_LEVEL_INFO_HIGH,
-			  "%s: skb %pK linearize failed. drop the pkt",
-			  __func__, skb);
 		++pAdapter->hdd_stats.hddTxRxStats.txXmitDroppedAC[ac];
 		goto drop_pkt_and_release_skb;
 	}
@@ -1083,7 +1012,7 @@ static netdev_tx_t __hdd_hard_start_xmit(struct sk_buff *skb,
 	}
 
 	if (pAdapter->tx_fn(ol_txrx_get_vdev_by_sta_id(STAId),
-		 (qdf_nbuf_t)skb, 0) != NULL) {
+		 (qdf_nbuf_t) skb) != NULL) {
 		QDF_TRACE(QDF_MODULE_ID_HDD_DATA, QDF_TRACE_LEVEL_INFO_HIGH,
 			  "%s: Failed to send packet to txrx for staid: %d",
 			  __func__, STAId);
@@ -1100,15 +1029,9 @@ drop_pkt_and_release_skb:
 drop_pkt:
 
 	if (skb) {
-		/* track connectivity stats */
-		if (pAdapter->pkt_type_bitmap)
-			hdd_tx_rx_collect_connectivity_stats_info(skb, pAdapter,
-						PKT_TYPE_TX_DROPPED, &pkt_type);
-
 		qdf_dp_trace_data_pkt(skb, QDF_DP_TRACE_DROP_PACKET_RECORD, 0,
 				      QDF_TX);
 		kfree_skb(skb);
-		skb = NULL;
 	}
 
 drop_pkt_accounting:
@@ -1120,6 +1043,11 @@ drop_pkt_accounting:
 		QDF_TRACE(QDF_MODULE_ID_HDD_DATA, QDF_TRACE_LEVEL_INFO_HIGH,
 				  "%s : ARP packet dropped", __func__);
 	}
+
+	/* track connectivity stats */
+	if (pAdapter->pkt_type_bitmap)
+		hdd_tx_rx_collect_connectivity_stats_info(skb, pAdapter,
+						PKT_TYPE_TX_DROPPED, &pkt_type);
 
 	return NETDEV_TX_OK;
 }
@@ -1576,10 +1504,9 @@ static inline void hdd_resolve_rx_ol_mode(hdd_context_t *hdd_ctx)
 {
 	if (!(hdd_ctx->config->lro_enable ^
 	    hdd_ctx->config->gro_enable)) {
-		if (hdd_ctx->config->lro_enable && hdd_ctx->config->gro_enable)
-			hdd_err("Can't enable both LRO and GRO, disabling Rx offload");
-		else
-			hdd_debug("LRO and GRO both are disabled");
+		hdd_ctx->config->lro_enable && hdd_ctx->config->gro_enable ?
+		hdd_err("Can't enable both LRO and GRO, disabling Rx offload") :
+		hdd_debug("LRO and GRO both are disabled");
 		hdd_ctx->ol_enable = 0;
 	} else if (hdd_ctx->config->lro_enable) {
 		hdd_debug("Rx offload LRO is enabled");

@@ -1294,8 +1294,6 @@ static bool sap_is_valid_acs_channel(ptSapContext sap_ctx, uint8_t channel)
 	int i = 0;
 
 	/* Check whether acs is enabled */
-	if (!sap_ctx->acs_cfg)
-		return true;
 	if (!sap_ctx->acs_cfg->acs_mode)
 		return true;
 
@@ -1874,44 +1872,45 @@ static void sap_mark_dfs_channels(ptSapContext sapContext, uint8_t *channels,
 	nRegDomainDfsChannels =
 		pMac->sap.SapDfsInfo.numCurrentRegDomainDfsChannels;
 
-	for (i = 0, j = 0; i < numChannels &&
-		j <= nRegDomainDfsChannels; i++, j++) {
-		if (!(psapDfsChannelNolList[j].dfs_channel_number ==
-				channels[i]))
-			continue;
+	for (i = 0; i < numChannels; i++) {
+		for (j = 0; j <= nRegDomainDfsChannels; j++) {
+			if (!(psapDfsChannelNolList[j].dfs_channel_number ==
+					channels[i]))
+				continue;
 
-		time_when_radar_found =
-			psapDfsChannelNolList[j].radar_found_timestamp;
-		time_elapsed_since_last_radar = time -
-					time_when_radar_found;
-		/*
-		 * If channel is already in NOL, don't update it again.
-		 * This is useful when marking bonding channels which
-		 * are already unavailable.
-		 */
-		if ((psapDfsChannelNolList[j].radar_status_flag ==
-			eSAP_DFS_CHANNEL_UNAVAILABLE) &&
-			(time_elapsed_since_last_radar <
-				SAP_DFS_NON_OCCUPANCY_PERIOD)) {
+			time_when_radar_found =
+				psapDfsChannelNolList[j].radar_found_timestamp;
+			time_elapsed_since_last_radar = time -
+						time_when_radar_found;
+			/*
+			 * If channel is already in NOL, don't update it again.
+			 * This is useful when marking bonding channels which
+			 * are already unavailable.
+			 */
+			if ((psapDfsChannelNolList[j].radar_status_flag ==
+				eSAP_DFS_CHANNEL_UNAVAILABLE) &&
+				(time_elapsed_since_last_radar <
+					SAP_DFS_NON_OCCUPANCY_PERIOD)) {
+				QDF_TRACE(QDF_MODULE_ID_SAP,
+						QDF_TRACE_LEVEL_INFO_HIGH,
+						FL("Channel=%d already in NOL"),
+						channels[i]);
+				continue;
+			}
+			/*
+			 * Capture the Radar Found timestamp on the
+			 * Current Channel in ms.
+			 */
+			psapDfsChannelNolList[j].radar_found_timestamp = time;
+			/* Mark the Channel to be unavailble for next 30 mins */
+			psapDfsChannelNolList[j].radar_status_flag =
+				eSAP_DFS_CHANNEL_UNAVAILABLE;
+
 			QDF_TRACE(QDF_MODULE_ID_SAP,
-					QDF_TRACE_LEVEL_INFO_HIGH,
-					FL("Channel=%d already in NOL"),
-					channels[i]);
-			continue;
+				QDF_TRACE_LEVEL_INFO_HIGH,
+				FL("Channel=%d Added to NOL LIST"),
+				channels[i]);
 		}
-		/*
-		 * Capture the Radar Found timestamp on the
-		 * Current Channel in ms.
-		 */
-		psapDfsChannelNolList[j].radar_found_timestamp = time;
-		/* Mark the Channel to be unavailble for next 30 mins */
-		psapDfsChannelNolList[j].radar_status_flag =
-			eSAP_DFS_CHANNEL_UNAVAILABLE;
-
-		QDF_TRACE(QDF_MODULE_ID_SAP,
-			QDF_TRACE_LEVEL_INFO_HIGH,
-			FL("Channel=%d Added to NOL LIST"),
-			channels[i]);
 	}
 }
 
@@ -2303,13 +2302,6 @@ QDF_STATUS sap_goto_channel_sel(ptSapContext sap_context,
 	tHalHandle h_hal;
 	uint8_t con_ch;
 	bool sta_sap_scc_on_dfs_chan;
-	hdd_context_t *hdd_ctx;
-
-	hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
-	if (!hdd_ctx) {
-		cds_err("HDD context is NULL");
-		return QDF_STATUS_E_FAILURE;
-	}
 
 	h_hal = cds_get_context(QDF_MODULE_ID_SME);
 	if (NULL == h_hal) {
@@ -2392,9 +2384,6 @@ QDF_STATUS sap_goto_channel_sel(ptSapContext sap_context,
 					sap_context->channel,
 					sap_context->csr_roamProfile.phyMode,
 					sap_context->cc_switch_mode);
-			QDF_TRACE(QDF_MODULE_ID_SAP, QDF_TRACE_LEVEL_DEBUG,
-				  FL("After check overlap: con_ch:%d"),
-					con_ch);
 			if (QDF_IS_STATUS_ERROR(
 				cds_valid_sap_conc_channel_check(&con_ch,
 					sap_context->channel))) {
@@ -2403,20 +2392,14 @@ QDF_STATUS sap_goto_channel_sel(ptSapContext sap_context,
 					FL("SAP can't start (no MCC)"));
 				return QDF_STATUS_E_ABORTED;
 			}
-			QDF_TRACE(QDF_MODULE_ID_SAP, QDF_TRACE_LEVEL_DEBUG,
-				  FL("After check concurrency: con_ch:%d"),
-				con_ch);
+
 			sta_sap_scc_on_dfs_chan =
 				cds_is_sta_sap_scc_allowed_on_dfs_channel();
 
-			if (con_ch &&
-			    (cds_is_safe_channel(con_ch) ||
-			     (!cds_is_safe_channel(con_ch) &&
-			      hdd_ctx->config->sta_sap_scc_on_lte_coex_chan)
-			    ) &&
-			    (!CDS_IS_DFS_CH(con_ch) ||
-			     (CDS_IS_DFS_CH(con_ch) &&
-			      sta_sap_scc_on_dfs_chan))) {
+			if (con_ch && cds_is_safe_channel(con_ch) &&
+					(!CDS_IS_DFS_CH(con_ch) ||
+					 (CDS_IS_DFS_CH(con_ch) &&
+					  sta_sap_scc_on_dfs_chan))) {
 
 				QDF_TRACE(QDF_MODULE_ID_SAP,
 						QDF_TRACE_LEVEL_ERROR,
@@ -3120,6 +3103,22 @@ QDF_STATUS sap_signal_hdd_event(ptSapContext sap_ctx,
 
 		break;
 
+	case eSAP_STA_LOSTLINK_DETECTED:
+		if (!csr_roaminfo) {
+			QDF_TRACE(QDF_MODULE_ID_SAP, QDF_TRACE_LEVEL_ERROR,
+				  FL("Invalid CSR Roam Info"));
+			return QDF_STATUS_E_INVAL;
+		}
+		sap_ap_event.sapHddEventCode = eSAP_STA_LOSTLINK_DETECTED;
+		disassoc_comp =
+			&sap_ap_event.sapevt.sapStationDisassocCompleteEvent;
+
+		qdf_copy_macaddr(&disassoc_comp->staMac,
+				 &csr_roaminfo->peerMac);
+		disassoc_comp->reason_code = csr_roaminfo->reasonCode;
+
+		break;
+
 	case eSAP_STA_DISASSOC_EVENT:
 
 		if (!csr_roaminfo) {
@@ -3141,10 +3140,6 @@ QDF_STATUS sap_signal_hdd_event(ptSapContext sap_ctx,
 
 		disassoc_comp->statusCode = csr_roaminfo->statusCode;
 		disassoc_comp->status = (eSapStatus) context;
-		disassoc_comp->rssi = csr_roaminfo->rssi;
-		disassoc_comp->rx_rate = csr_roaminfo->rx_rate;
-		disassoc_comp->tx_rate = csr_roaminfo->tx_rate;
-		disassoc_comp->reason_code = csr_roaminfo->disassoc_reason;
 		break;
 
 	case eSAP_STA_SET_KEY_EVENT:
@@ -4953,13 +4948,6 @@ static QDF_STATUS sap_get_channel_list(ptSapContext sap_ctx,
 			sap_channel_in_acs_channel_list(
 				CDS_CHANNEL_NUM(loop_count),
 				sap_ctx, &spect_info_obj))
-			continue;
-		/* Dont scan DFS channels in case of MCC disallowed
-		 * As it can result in SAP starting on DFS channel
-		 * resulting  MCC on DFS channel
-		 */
-		if (CDS_IS_DFS_CH(CDS_CHANNEL_NUM(loop_count)) &&
-				  cds_disallow_mcc(CDS_CHANNEL_NUM(loop_count)))
 			continue;
 
 		/*

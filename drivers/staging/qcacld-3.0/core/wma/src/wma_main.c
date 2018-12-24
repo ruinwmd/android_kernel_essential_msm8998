@@ -44,7 +44,11 @@
 #include "wmi_unified.h"
 #include "wni_cfg.h"
 #include "cfg_api.h"
-#include "target_if_def_config.h"
+#if defined(CONFIG_HL_SUPPORT)
+#include "wlan_tgt_def_config_hl.h"
+#else
+#include "wlan_tgt_def_config.h"
+#endif
 #include "qdf_nbuf.h"
 #include "qdf_types.h"
 #include "qdf_mem.h"
@@ -191,7 +195,7 @@ static uint32_t wma_get_number_of_tids_supported(uint8_t no_of_peers_supported)
 #else
 static uint32_t wma_get_number_of_tids_supported(uint8_t no_of_peers_supported)
 {
-	return 2 * (no_of_peers_supported + TGT_NUM_VDEV + 2);
+	return 2 * (no_of_peers_supported + CFG_TGT_NUM_VDEV + 2);
 }
 #endif
 
@@ -206,51 +210,51 @@ static void wma_set_default_tgt_config(tp_wma_handle wma_handle)
 	uint8_t no_of_peers_supported;
 	wmi_resource_config tgt_cfg = {
 		0,              /* Filling zero for TLV Tag and Length fields */
-		TGT_NUM_VDEV,
-		TGT_NUM_PEERS + TGT_NUM_VDEV + 2,
-		TGT_NUM_OFFLOAD_PEERS,
-		TGT_NUM_OFFLOAD_REORDER_BUFFS,
-		TGT_NUM_PEER_KEYS,
-		TGT_NUM_TIDS,
-		TGT_AST_SKID_LIMIT,
-		TGT_DEFAULT_TX_CHAIN_MASK,
-		TGT_DEFAULT_RX_CHAIN_MASK,
-		{TGT_RX_TIMEOUT_LO_PRI, TGT_RX_TIMEOUT_LO_PRI,
-		 TGT_RX_TIMEOUT_LO_PRI, TGT_RX_TIMEOUT_HI_PRI},
-		TGT_RX_DECAP_MODE,
-		TGT_DEFAULT_SCAN_MAX_REQS,
-		TGT_DEFAULT_BMISS_OFFLOAD_MAX_VDEV,
-		TGT_DEFAULT_ROAM_OFFLOAD_MAX_VDEV,
-		TGT_DEFAULT_ROAM_OFFLOAD_MAX_PROFILES,
-		TGT_DEFAULT_NUM_MCAST_GROUPS,
-		TGT_DEFAULT_NUM_MCAST_TABLE_ELEMS,
-		TGT_DEFAULT_MCAST2UCAST_MODE,
-		TGT_DEFAULT_TX_DBG_LOG_SIZE,
-		TGT_WDS_ENTRIES,
-		TGT_DEFAULT_DMA_BURST_SIZE,
-		TGT_DEFAULT_MAC_AGGR_DELIM,
-		TGT_DEFAULT_RX_SKIP_DEFRAG_TIMEOUT_DUP_DETECTION_CHECK,
-		TGT_DEFAULT_VOW_CONFIG,
-		TGT_DEFAULT_GTK_OFFLOAD_MAX_VDEV,
-		TGT_NUM_MSDU_DESC,
-		TGT_MAX_FRAG_TABLE_ENTRIES,
-		TGT_NUM_TDLS_VDEVS,
-		TGT_NUM_TDLS_CONN_TABLE_ENTRIES,
-		TGT_DEFAULT_BEACON_TX_OFFLOAD_MAX_VDEV,
-		TGT_MAX_MULTICAST_FILTER_ENTRIES,
+		CFG_TGT_NUM_VDEV,
+		CFG_TGT_NUM_PEERS + CFG_TGT_NUM_VDEV + 2,
+		CFG_TGT_NUM_OFFLOAD_PEERS,
+		CFG_TGT_NUM_OFFLOAD_REORDER_BUFFS,
+		CFG_TGT_NUM_PEER_KEYS,
+		CFG_TGT_NUM_TIDS,
+		CFG_TGT_AST_SKID_LIMIT,
+		CFG_TGT_DEFAULT_TX_CHAIN_MASK,
+		CFG_TGT_DEFAULT_RX_CHAIN_MASK,
+		{CFG_TGT_RX_TIMEOUT_LO_PRI, CFG_TGT_RX_TIMEOUT_LO_PRI,
+		 CFG_TGT_RX_TIMEOUT_LO_PRI, CFG_TGT_RX_TIMEOUT_HI_PRI},
+		CFG_TGT_RX_DECAP_MODE,
+		CFG_TGT_DEFAULT_SCAN_MAX_REQS,
+		CFG_TGT_DEFAULT_BMISS_OFFLOAD_MAX_VDEV,
+		CFG_TGT_DEFAULT_ROAM_OFFLOAD_MAX_VDEV,
+		CFG_TGT_DEFAULT_ROAM_OFFLOAD_MAX_PROFILES,
+		CFG_TGT_DEFAULT_NUM_MCAST_GROUPS,
+		CFG_TGT_DEFAULT_NUM_MCAST_TABLE_ELEMS,
+		CFG_TGT_DEFAULT_MCAST2UCAST_MODE,
+		CFG_TGT_DEFAULT_TX_DBG_LOG_SIZE,
+		CFG_TGT_WDS_ENTRIES,
+		CFG_TGT_DEFAULT_DMA_BURST_SIZE,
+		CFG_TGT_DEFAULT_MAC_AGGR_DELIM,
+		CFG_TGT_DEFAULT_RX_SKIP_DEFRAG_TIMEOUT_DUP_DETECTION_CHECK,
+		CFG_TGT_DEFAULT_VOW_CONFIG,
+		CFG_TGT_DEFAULT_GTK_OFFLOAD_MAX_VDEV,
+		CFG_TGT_NUM_MSDU_DESC,
+		CFG_TGT_MAX_FRAG_TABLE_ENTRIES,
+		CFG_TGT_NUM_TDLS_VDEVS,
+		CFG_TGT_NUM_TDLS_CONN_TABLE_ENTRIES,
+		CFG_TGT_DEFAULT_BEACON_TX_OFFLOAD_MAX_VDEV,
+		CFG_TGT_MAX_MULTICAST_FILTER_ENTRIES,
 		0,
 		0,
 		0,
-		TGT_NUM_TDLS_CONC_SLEEP_STAS,
-		TGT_NUM_TDLS_CONC_BUFFER_STAS,
+		CFG_TGT_NUM_TDLS_CONC_SLEEP_STAS,
+		CFG_TGT_NUM_TDLS_CONC_BUFFER_STAS,
 		0,
-		TGT_NUM_OCB_VDEVS,
-		TGT_NUM_OCB_CHANNELS,
-		TGT_NUM_OCB_SCHEDULES,
+		CFG_TGT_NUM_OCB_VDEVS,
+		CFG_TGT_NUM_OCB_CHANNELS,
+		CFG_TGT_NUM_OCB_SCHEDULES,
 	};
 
 	no_of_peers_supported = wma_get_number_of_peers_supported(wma_handle);
-	tgt_cfg.num_peers = no_of_peers_supported + TGT_NUM_VDEV + 2;
+	tgt_cfg.num_peers = no_of_peers_supported + CFG_TGT_NUM_VDEV + 2;
 	tgt_cfg.num_tids = wma_get_number_of_tids_supported(
 				no_of_peers_supported);
 	tgt_cfg.scan_max_pending_req = wma_handle->max_scan;
@@ -262,18 +266,18 @@ static void wma_set_default_tgt_config(tp_wma_handle wma_handle)
 	WMITLV_SET_HDR(&tgt_cfg.tlv_header,
 		       WMITLV_TAG_STRUC_wmi_resource_config,
 		       WMITLV_GET_STRUCT_TLVLEN(wmi_resource_config));
-	/* reduce the peer/vdev if TGT_NUM_MSDU_DESC exceeds 1000 */
+	/* reduce the peer/vdev if CFG_TGT_NUM_MSDU_DESC exceeds 1000 */
 #ifdef PERE_IP_HDR_ALIGNMENT_WAR
 	if (scn->host_80211_enable) {
 		/*
 		 * To make the IP header begins at dword aligned address,
 		 * we make the decapsulation mode as Native Wifi.
 		 */
-		tgt_cfg.rx_decap_mode = TGT_RX_DECAP_MODE_NWIFI;
+		tgt_cfg.rx_decap_mode = CFG_TGT_RX_DECAP_MODE_NWIFI;
 	}
 #endif /* PERE_IP_HDR_ALIGNMENT_WAR */
 	if (QDF_GLOBAL_MONITOR_MODE == cds_get_conparam())
-		tgt_cfg.rx_decap_mode = TGT_RX_DECAP_MODE_RAW;
+		tgt_cfg.rx_decap_mode = CFG_TGT_RX_DECAP_MODE_RAW;
 
 	wma_handle->wlan_resource_config = tgt_cfg;
 }
@@ -1898,19 +1902,6 @@ static void wma_cleanup_hold_req(tp_wma_handle wma)
 	qdf_spin_unlock_bh(&wma->wma_hold_req_q_lock);
 }
 
-void wma_cleanup_vdev_resp_and_hold_req(void *priv)
-{
-	tp_wma_handle wma_handle = priv;
-
-	if (!wma_handle) {
-		WMA_LOGE(FL("wma_handle is invald!"));
-		return;
-	}
-
-	wma_cleanup_vdev_resp_queue(wma_handle);
-	wma_cleanup_hold_req(wma_handle);
-}
-
 /**
  * wma_shutdown_notifier_cb - Shutdown notifer call back
  * @priv : WMA handle
@@ -1926,16 +1917,10 @@ void wma_cleanup_vdev_resp_and_hold_req(void *priv)
 static void wma_shutdown_notifier_cb(void *priv)
 {
 	tp_wma_handle wma_handle = priv;
-	cds_msg_t msg = { 0 };
-	QDF_STATUS status;
 
 	qdf_event_set(&wma_handle->wma_resume_event);
-
-	sys_build_message_header(SYS_MSG_ID_CLEAN_VDEV_RSP_QUEUE, &msg);
-	msg.bodyptr = priv;
-	status = cds_mq_post_message(QDF_MODULE_ID_SYS, &msg);
-	if (QDF_IS_STATUS_ERROR(status))
-		WMA_LOGE(FL("Failed to post SYS_MSG_ID_CLEAN_VDEV_RSP_QUEUE"));
+	wma_cleanup_vdev_resp_queue(wma_handle);
+	wma_cleanup_hold_req(wma_handle);
 }
 
 struct wma_version_info g_wmi_version_info;
@@ -2088,7 +2073,6 @@ static int wma_flush_complete_evt_handler(void *handle,
 
 	wmi_event = param_buf->fixed_param;
 	reason_code = wmi_event->reserved0;
-	WMA_LOGD("Received reason code %d from FW", reason_code);
 
 	buf_ptr = (uint8_t *)wmi_event;
 	buf_ptr = buf_ptr + sizeof(wmi_debug_mesg_flush_complete_fixed_param) +
@@ -2731,11 +2715,6 @@ QDF_STATUS wma_open(void *cds_context,
 					WMA_RX_SERIALIZER_CTX);
 
 	wmi_unified_register_event_handler(wma_handle->wmi_handle,
-					   WMI_ROAM_SCAN_STATS_EVENTID,
-					   wma_roam_scan_stats_event_handler,
-					   WMA_RX_SERIALIZER_CTX);
-
-	wmi_unified_register_event_handler(wma_handle->wmi_handle,
 					   WMI_UPDATE_VDEV_RATE_STATS_EVENTID,
 					   wma_link_status_event_handler,
 					   WMA_RX_SERIALIZER_CTX);
@@ -3181,11 +3160,6 @@ static int wma_pdev_set_hw_mode_resp_evt_handler(void *handle,
 			QDF_BUG(0);
 			goto fail;
 		}
-		if (vdev_id >= wma->max_bssid) {
-			WMA_LOGE("%s: vdev_id: %d is invalid, max_bssid: %d",
-					__func__, vdev_id, wma->max_bssid);
-			goto fail;
-		}
 		mac_id = WMA_PDEV_TO_MAC_MAP(vdev_mac_entry[i].pdev_id);
 
 		WMA_LOGE("%s: vdev_id:%d mac_id:%d",
@@ -3245,13 +3219,7 @@ void wma_process_pdev_hw_mode_trans_ind(void *handle,
 {
 	uint32_t i;
 	tp_wma_handle wma = (tp_wma_handle) handle;
-	if (fixed_param->num_vdev_mac_entries > MAX_VDEV_SUPPORTED) {
-		WMA_LOGE("Number of Vdev mac entries %d exceeded"
-			 " max vdev supported %d",
-			 fixed_param->num_vdev_mac_entries,
-			 MAX_VDEV_SUPPORTED);
-		return;
-	}
+
 	hw_mode_trans_ind->old_hw_mode_index = fixed_param->old_hw_mode_index;
 	hw_mode_trans_ind->new_hw_mode_index = fixed_param->new_hw_mode_index;
 	hw_mode_trans_ind->num_vdev_mac_entries =
@@ -3272,11 +3240,6 @@ void wma_process_pdev_hw_mode_trans_ind(void *handle,
 			WMA_LOGE("%s: soc level id received for mac id)",
 					__func__);
 			QDF_BUG(0);
-			return;
-		}
-		if (vdev_id >= wma->max_bssid) {
-			WMA_LOGE("%s: vdev_id: %d is invalid, max_bssid: %d",
-					__func__, vdev_id, wma->max_bssid);
 			return;
 		}
 
@@ -3574,18 +3537,6 @@ QDF_STATUS wma_start(void *cds_ctx)
 		goto end;
 	}
 #endif /* FEATURE_WLAN_CH_AVOID */
-	WMA_LOGD("Registering SAR2 response handler");
-
-	status = wmi_unified_register_event_handler(wma_handle->wmi_handle,
-						WMI_SAR2_RESULT_EVENTID,
-						wma_sar_rsp_evt_handler,
-						WMA_RX_SERIALIZER_CTX);
-	if (status) {
-		WMA_LOGE("Failed to register sar response event cb");
-		qdf_status = QDF_STATUS_E_FAILURE;
-		goto end;
-	}
-
 #ifdef FEATURE_WLAN_AUTO_SHUTDOWN
 	WMA_LOGD("Registering auto shutdown handler");
 	status = wmi_unified_register_event_handler(wma_handle->wmi_handle,
@@ -3907,14 +3858,6 @@ QDF_STATUS wma_wmi_service_close(void *cds_ctx)
 			qdf_mem_free(wma_handle->
 				     interfaces[i].action_frame_filter);
 			wma_handle->interfaces[i].action_frame_filter = NULL;
-		}
-
-		if (wma_handle->interfaces[i].roam_scan_stats_req) {
-			struct sir_roam_scan_stats *req;
-
-			req = wma_handle->interfaces[i].roam_scan_stats_req;
-			wma_handle->interfaces[i].roam_scan_stats_req = NULL;
-			qdf_mem_free(req);
 		}
 
 		if (wma_handle->interfaces[i].roam_synch_frame_ind.
@@ -4300,9 +4243,6 @@ static inline void wma_update_target_services(tp_wma_handle wh,
 
 	/* Enable WOW */
 	g_fw_wlan_feat_caps |= (1 << WOW);
-
-	if (WMI_SERVICE_IS_ENABLED(wh->wmi_service_bitmap, WMI_SERVICE_NLO))
-		g_fw_wlan_feat_caps |= (1 << PNO);
 
 	/* ARP offload */
 	cfg->arp_offload = WMI_SERVICE_IS_ENABLED(wh->wmi_service_bitmap,
@@ -4812,14 +4752,6 @@ static void wma_update_ra_rate_limit(tp_wma_handle wma_handle,
 }
 #endif
 
-static void wma_update_sar_version(tp_wma_handle wma_handle,
-				   struct wma_tgt_cfg *cfg)
-{
-	struct extended_caps *phy_caps;
-
-	phy_caps = &wma_handle->phy_caps;
-	cfg->sar_version = phy_caps->sar_capability.active_version;
-}
 /**
  * wma_update_hdd_cfg() - update HDD config
  * @wma_handle: wma handle
@@ -4877,7 +4809,6 @@ static void wma_update_hdd_cfg(tp_wma_handle wma_handle)
 	tgt_cfg.apf_enabled = wma_handle->apf_enabled;
 	tgt_cfg.rcpi_enabled = wma_handle->rcpi_enabled;
 	wma_update_ra_rate_limit(wma_handle, &tgt_cfg);
-	wma_update_sar_version(wma_handle, &tgt_cfg);
 	tgt_cfg.fine_time_measurement_cap =
 		wma_handle->fine_time_measurement_cap;
 	tgt_cfg.wmi_max_len = wmi_get_max_msg_len(wma_handle->wmi_handle)
@@ -6050,18 +5981,6 @@ static void wma_populate_soc_caps(t_wma_handle *wma_handle,
 		wma_cleanup_dbs_phy_caps(wma_handle);
 		return;
 	}
-
-	if (param_buf->sar_caps) {
-		qdf_mem_copy(&phy_caps->sar_capability,
-			     param_buf->sar_caps,
-			     sizeof(WMI_SAR_CAPABILITIES));
-		if (phy_caps->sar_capability.active_version > SAR_VERSION_2) {
-			WMA_LOGE("%s: incorrect SAR version", __func__);
-			wma_cleanup_dbs_phy_caps(wma_handle);
-			return;
-		}
-	}
-
 	phy_caps->each_phy_hal_reg_cap =
 		qdf_mem_malloc(phy_caps->num_phy_for_hal_reg_cap.num_phy *
 				sizeof(WMI_HAL_REG_CAPABILITIES_EXT));
@@ -8316,10 +8235,6 @@ QDF_STATUS wma_mc_process_msg(void *cds_context, cds_msg_t *msg)
 	case WMA_INVOKE_NEIGHBOR_REPORT:
 		wma_send_invoke_neighbor_report(wma_handle,
 		(struct wmi_invoke_neighbor_report_params *)msg->bodyptr);
-		qdf_mem_free(msg->bodyptr);
-		break;
-	case WMA_GET_ROAM_SCAN_STATS:
-		wma_get_roam_scan_stats(wma_handle, msg->bodyptr);
 		qdf_mem_free(msg->bodyptr);
 		break;
 	default:

@@ -9339,30 +9339,6 @@ enum dot11p_mode {
 #define CFG_STA_SAP_SCC_ON_DFS_CHAN_DEFAULT      (0)
 
 /*
- * <ini>
- * g_sta_sap_scc_on_lte_coex_chan - Allow STA+SAP SCC on LTE coex channel
- * @Min: 0
- * @Max: 1
- * @Default: 0
- *
- * This ini is used to allow STA+SAP SCC on LTE coex channel
- * 0 - Disallow STA+SAP SCC on LTE coex channel
- * 1 - Allow STA+SAP SCC on LTE coex channel
- *
- * Related: None.
- *
- * Supported Feature: Non-DBS, DBS
- *
- * Usage: Internal/External
- *
- * </ini>
- */
-#define CFG_STA_SAP_SCC_ON_LTE_COEX_CHAN              "g_sta_sap_scc_on_lte_coex_chan"
-#define CFG_STA_SAP_SCC_ON_LTE_COEX_CHAN_MIN          (0)
-#define CFG_STA_SAP_SCC_ON_LTE_COEX_CHAN_MAX          (1)
-#define CFG_STA_SAP_SCC_ON_LTE_COEX_CHAN_DEFAULT      (0)
-
-/*
  * gPNOChannelPrediction will allow user to enable/disable the
  * PNO channel prediction feature.
  * In current PNO implementation, scan is always done until all configured
@@ -10314,7 +10290,7 @@ enum restart_beaconing_on_ch_avoid_rule {
  * fw_timeout_crash - Enable/Disable BUG ON
  * @Min: 0
  * @Max: 1
- * @Default: 1
+ * @Default: 0
  *
  * This ini is used to Trigger host crash when firmware fails to send the
  * response to host
@@ -10332,7 +10308,7 @@ enum restart_beaconing_on_ch_avoid_rule {
 #define CFG_CRASH_FW_TIMEOUT_NAME       "fw_timeout_crash"
 #define CFG_CRASH_FW_TIMEOUT_DISABLE    (0)
 #define CFG_CRASH_FW_TIMEOUT_ENABLE     (1)
-#define CFG_CRASH_FW_TIMEOUT_DEFAULT    (1)
+#define CFG_CRASH_FW_TIMEOUT_DEFAULT    (0)
 
 /* Hold wakelock for unicast RX packets for the specified duration  */
 #define CFG_RX_WAKELOCK_TIMEOUT_NAME     "rx_wakelock_timeout"
@@ -12154,8 +12130,8 @@ enum hw_filter_mode {
  * <ini>
  * g_sap_chanswitch_beacon_cnt - channel switch beacon count
  * @Min: 1
- * @Max: 10
- * @Default: 10
+ * @Max: 5
+ * @Default: 5
  *
  * This ini is used to configure channel switch beacon count
  *
@@ -12168,7 +12144,7 @@ enum hw_filter_mode {
 #define CFG_SAP_CH_SWITCH_BEACON_CNT         "g_sap_chanswitch_beacon_cnt"
 #define CFG_SAP_CH_SWITCH_BEACON_CNT_MIN     (1)
 #define CFG_SAP_CH_SWITCH_BEACON_CNT_MAX     (10)
-#define CFG_SAP_CH_SWITCH_BEACON_CNT_DEFAULT (10)
+#define CFG_SAP_CH_SWITCH_BEACON_CNT_DEFAULT (5)
 
 /*
  * <ini>
@@ -14323,48 +14299,6 @@ enum hw_filter_mode {
 #define CFG_ENABLE_RTT_MAC_RANDOMIZATION_MAX     (1)
 #define CFG_ENABLE_RTT_MAC_RANDOMIZATION_DEFAULT (0)
 
-/*
- * <ini>
- * gEnableSecondaryRate - Enable/Disable Secondary Retry Rate feature subset
- *
- * @Min: 0x0
- * @Max: 0x3F
- * @Default: 0x18
- *
- * It is a 32 bit value such that the various bits represent as below -
- * Bit-0 : is Enable/Disable Control for "PPDU Secondary Retry Support"
- * Bit-1 : is Enable/Disable Control for "RTS Black/White-listing Support"
- * Bit-2 : is Enable/Disable Control for "Higher MCS retry restriction
- *         on XRETRY failures"
- * Bit 3-5 : is "Xretry threshold" to use
- * Bit 3~31 : reserved for future use.
- *
- * Usage: External
- *
- * </ini>
- */
-
-#define CFG_ENABLE_SECONDARY_RATE_NAME          "gEnableSecondaryRate"
-#define CFG_ENABLE_SECONDARY_RATE_MIN           (0)
-#define CFG_ENABLE_SECONDARY_RATE_MAX           (0x3F)
-#define CFG_ENABLE_SECONDARY_RATE_DEFAULT       (0x18)
-
-/*
- * <ini>
- * gEnableUnitTestFramework - Enable/Disable unit test framework
- * @Min: 0
- * @Max: 1
- * @Default: 0
- *
- * Usage: Internal (only for dev and test team)
- *
- * </ini>
- */
-#define CFG_ENABLE_UNIT_TEST_FRAMEWORK_NAME    "gEnableUnitTestFramework"
-#define CFG_ENABLE_UNIT_TEST_FRAMEWORK_MIN     (0)
-#define CFG_ENABLE_UNIT_TEST_FRAMEWORK_MAX     (1)
-#define CFG_ENABLE_UINT_TEST_FRAMEWORK_DEFAULT (0)
-
 /*---------------------------------------------------------------------------
    Type declarations
    -------------------------------------------------------------------------*/
@@ -14998,7 +14932,6 @@ struct hdd_config {
 	uint32_t dual_mac_feature_disable;
 	uint8_t dbs_scan_selection[CFG_DBS_SCAN_PARAM_LENGTH];
 	uint32_t sta_sap_scc_on_dfs_chan;
-	uint32_t sta_sap_scc_on_lte_coex_chan;
 	bool     tx_chain_mask_cck;
 	uint8_t  tx_chain_mask_1ss;
 	bool smart_chainmask_enabled;
@@ -15272,8 +15205,6 @@ struct hdd_config {
 	uint32_t channel_select_logic_conc;
 	bool enable_dtim_selection_diversity;
 	bool enable_rtt_mac_randomization;
-	uint32_t enable_secondary_rate;
-	bool is_unit_test_framework_enabled;
 };
 
 #define VAR_OFFSET(_Struct, _Var) (offsetof(_Struct, _Var))

@@ -154,22 +154,11 @@ hdd_conn_set_authenticated(hdd_adapter_t *pAdapter, uint8_t authState)
 {
 	hdd_station_ctx_t *pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(pAdapter);
 	hdd_context_t *pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
-	char *auth_time;
-	uint32_t time_buffer_size;
 
 	/* save the new connection state */
 	hdd_debug("Authenticated state Changed from oldState:%d to State:%d",
 		   pHddStaCtx->conn_info.uIsAuthenticated, authState);
 	pHddStaCtx->conn_info.uIsAuthenticated = authState;
-
-	auth_time = pHddStaCtx->conn_info.auth_time;
-	time_buffer_size = sizeof(pHddStaCtx->conn_info.auth_time);
-
-	if (authState)
-		qdf_get_time_of_the_day_in_hr_min_sec_usec(auth_time,
-							   time_buffer_size);
-	else
-		qdf_mem_set(auth_time, 0x00, time_buffer_size);
 
 	/* Check is pending ROC request or not when auth state changed */
 	schedule_delayed_work(&pHddCtx->roc_req_work, 0);
@@ -189,25 +178,16 @@ void hdd_conn_set_connection_state(hdd_adapter_t *adapter,
 {
 	hdd_station_ctx_t *hdd_sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
-	char *connect_time;
-	uint32_t time_buffer_size;
 
 	/* save the new connection state */
-	hdd_debug("Changed conn state from old:%d to new:%d for dev %s",
-		hdd_sta_ctx->conn_info.connState, conn_state, adapter->dev->name);
+	hdd_debug("%pS Changed conn state from old:%d to new:%d for dev %s",
+		(void *)_RET_IP_, hdd_sta_ctx->conn_info.connState,
+		conn_state, adapter->dev->name);
 
 	hdd_tsf_notify_wlan_state_change(adapter,
 					 hdd_sta_ctx->conn_info.connState,
 					 conn_state);
 	hdd_sta_ctx->conn_info.connState = conn_state;
-
-	connect_time = hdd_sta_ctx->conn_info.connect_time;
-	time_buffer_size = sizeof(hdd_sta_ctx->conn_info.connect_time);
-	if (conn_state == eConnectionState_Associated)
-		qdf_get_time_of_the_day_in_hr_min_sec_usec(connect_time,
-							   time_buffer_size);
-	else
-		qdf_mem_set(connect_time, 0x00, time_buffer_size);
 
 	if (conn_state != eConnectionState_NdiConnected)
 		schedule_delayed_work(&hdd_ctx->roc_req_work, 0);
@@ -401,6 +381,14 @@ static int hdd_add_beacon_filter(hdd_adapter_t *adapter)
 	return 0;
 }
 
+/**
+ * hdd_copy_vht_caps()- copy vht caps info from roam info to
+ *  hdd station context.
+ * @hdd_sta_ctx: pointer to hdd station context
+ * @roam_info: pointer to roam info
+ *
+ * Return: None
+ */
 void hdd_copy_ht_caps(struct ieee80211_ht_cap *hdd_ht_cap,
 		      tDot11fIEHTCaps *roam_ht_cap)
 {
@@ -586,7 +574,7 @@ void hdd_copy_ht_caps(struct ieee80211_ht_cap *hdd_ht_cap,
 #define VHT_CAP_VHT_LINK_ADAPTATION_VHT_MRQ_MFB_SHIFT 26
 
 /**
- * hdd_copy_vht_caps()- copy vht caps info from roam info to
+ * hdd_copy_ht_caps()- copy ht caps info from roam info to
  *  hdd station context.
  * @hdd_sta_ctx: pointer to hdd station context
  * @roam_info: pointer to roam info
@@ -973,9 +961,6 @@ hdd_conn_save_connect_info(hdd_adapter_t *pAdapter, tCsrRoamInfo *pRoamInfo,
 
 			pHddStaCtx->conn_info.rate_flags =
 				pRoamInfo->chan_info.rate_flags;
-
-			pHddStaCtx->conn_info.ch_width =
-				pRoamInfo->chan_info.ch_width;
 		}
 		hdd_save_bss_info(pAdapter, pRoamInfo);
 	}
@@ -1298,7 +1283,7 @@ static void hdd_send_association_event(struct net_device *dev,
 	if (eConnectionState_Associated == pHddStaCtx->conn_info.connState) {
 		tSirSmeChanInfo chan_info;
 
-		if (!pCsrRoamInfo || !pCsrRoamInfo->pBssDesc) {
+		if (!pCsrRoamInfo) {
 			hdd_warn("STA in associated state but pCsrRoamInfo is null");
 			return;
 		}
@@ -1613,12 +1598,12 @@ static QDF_STATUS hdd_dis_connect_handler(hdd_adapter_t *pAdapter,
 	if ((eConnectionState_Disconnecting ==
 	    pHddStaCtx->conn_info.connState) ||
 	    (eConnectionState_NotConnected ==
-	    pHddStaCtx->conn_info.connState) ||
-	    (eConnectionState_Connecting ==
 	    pHddStaCtx->conn_info.connState)) {
 		hdd_debug("HDD has initiated a disconnect, no need to send disconnect indication to kernel");
 		sendDisconInd = false;
-	} else {
+	}
+
+	if (pHddStaCtx->conn_info.connState != eConnectionState_Disconnecting) {
 		INIT_COMPLETION(pAdapter->disconnect_comp_var);
 		hdd_conn_set_connection_state(pAdapter,
 					      eConnectionState_Disconnecting);
@@ -1732,8 +1717,7 @@ static QDF_STATUS hdd_dis_connect_handler(hdd_adapter_t *pAdapter,
 		}
 	} else {
 		sta_id = pHddStaCtx->conn_info.staId[0];
-		hdd_debug("roamResult is: %d %s", roamResult,
-			   get_e_csr_roam_result_str(roamResult));
+		hdd_debug("roamResult: %d", roamResult);
 
 		/* clear scan cache for Link Lost */
 		if (pRoamInfo && !pRoamInfo->reasonCode &&
@@ -1750,15 +1734,7 @@ static QDF_STATUS hdd_dis_connect_handler(hdd_adapter_t *pAdapter,
 	}
 	/* Clear saved connection information in HDD */
 	hdd_conn_remove_connect_info(pHddStaCtx);
-	/*
-	 * eConnectionState_Connecting state mean that connection is in
-	 * progress so no need to set state to eConnectionState_NotConnected
-	 */
-	if ((eConnectionState_Connecting !=
-	    pHddStaCtx->conn_info.connState)) {
-		hdd_conn_set_connection_state(pAdapter,
-					      eConnectionState_NotConnected);
-	}
+	hdd_conn_set_connection_state(pAdapter, eConnectionState_NotConnected);
 #ifdef WLAN_FEATURE_GTK_OFFLOAD
 	if ((QDF_STA_MODE == pAdapter->device_mode) ||
 	    (QDF_P2P_CLIENT_MODE == pAdapter->device_mode)) {
@@ -2123,8 +2099,7 @@ static void hdd_send_re_assoc_event(struct net_device *dev,
 		hdd_err("Unable to allocate Assoc Req IE");
 		goto done;
 	}
-
-	if (!pCsrRoamInfo || !pCsrRoamInfo->pBssDesc) {
+	if (pCsrRoamInfo == NULL) {
 		hdd_err("Invalid CSR roam info");
 		goto done;
 	}
@@ -2538,14 +2513,6 @@ static QDF_STATUS hdd_association_completion_handler(hdd_adapter_t *pAdapter,
 		hdd_err("config is NULL");
 		return QDF_STATUS_E_NULL_VALUE;
 	}
-
-	/*
-	 * Enable roaming on other STA iface except this one.
-	 * Firmware dosent support connection on one STA iface while
-	 * roaming on other STA iface
-	 */
-	wlan_hdd_enable_roaming(pAdapter);
-
 	/* HDD has initiated disconnect, do not send connect result indication
 	 * to kernel as it will be handled by __cfg80211_disconnect.
 	 */
@@ -2555,12 +2522,9 @@ static QDF_STATUS hdd_association_completion_handler(hdd_adapter_t *pAdapter,
 	    pHddStaCtx->conn_info.connState)) &&
 	    ((eCSR_ROAM_RESULT_ASSOCIATED == roamResult) ||
 	    (eCSR_ROAM_ASSOCIATION_FAILURE == roamStatus))) {
-		hdd_info("hddDisconInProgress state=%d, result=%d %s, status=%d %s",
+		hdd_info("hddDisconInProgress state=%d, result=%d, status=%d",
 				pHddStaCtx->conn_info.connState,
-				roamResult,
-				get_e_csr_roam_result_str(roamResult),
-				roamStatus,
-				get_e_roam_cmd_status_str(roamStatus));
+				roamResult, roamStatus);
 		hddDisconInProgress = true;
 	}
 
@@ -2919,13 +2883,10 @@ static QDF_STATUS hdd_association_completion_handler(hdd_adapter_t *pAdapter,
 					else {
 						hdd_debug("sending connect indication to nl80211:for bssid "
 							 MAC_ADDRESS_STR
-							 " result:%d %s and Status:%d %s",
+							 " result:%d and Status:%d",
 							 MAC_ADDR_ARRAY
 							 (pRoamInfo->bssid.bytes),
-							 roamResult,
-							 get_e_csr_roam_result_str(roamResult),
-							 roamStatus,
-							 get_e_roam_cmd_status_str(roamStatus));
+							 roamResult, roamStatus);
 
 						/* inform connect result to nl80211 */
 						hdd_connect_result(dev,
@@ -3059,20 +3020,14 @@ static QDF_STATUS hdd_association_completion_handler(hdd_adapter_t *pAdapter,
 
 		if (pRoamInfo)
 			hdd_err("wlan: connection failed with " MAC_ADDRESS_STR
-				 " result: %d %s and Status: %d %s",
+				 " result: %d and Status: %d",
 				 MAC_ADDR_ARRAY(pRoamInfo->bssid.bytes),
-				 roamResult,
-				 get_e_csr_roam_result_str(roamResult),
-				 roamStatus,
-				 get_e_roam_cmd_status_str(roamStatus));
+				 roamResult, roamStatus);
 		else
 			hdd_err("wlan: connection failed with " MAC_ADDRESS_STR
-				 " result: %d %s and Status: %d %s",
+				 " result: %d and Status: %d",
 				 MAC_ADDR_ARRAY(pWextState->req_bssId.bytes),
-				 roamResult,
-				 get_e_csr_roam_result_str(roamResult),
-				 roamStatus,
-				 get_e_roam_cmd_status_str(roamStatus));
+				 roamResult, roamStatus);
 
 		if ((eCSR_ROAM_RESULT_SCAN_FOR_SSID_FAILURE == roamResult) ||
 		   (pRoamInfo &&
@@ -3102,24 +3057,18 @@ static QDF_STATUS hdd_association_completion_handler(hdd_adapter_t *pAdapter,
 			if (pRoamInfo) {
 				hdd_err("send connect failure to nl80211: for bssid "
 					MAC_ADDRESS_STR
-					" result: %d %s and Status: %d %s reasoncode: %d",
+					" result: %d and Status: %d reasoncode: %d",
 					MAC_ADDR_ARRAY(pRoamInfo->bssid.bytes),
-					roamResult,
-					get_e_csr_roam_result_str(roamResult),
-					roamStatus,
-					get_e_roam_cmd_status_str(roamStatus),
+					roamResult, roamStatus,
 					pRoamInfo->reasonCode);
 				pHddStaCtx->conn_info.assoc_status_code =
 					pRoamInfo->statusCode;
 			} else {
 				hdd_err("connect failed: for bssid "
 				       MAC_ADDRESS_STR
-				       " result: %d %s and status: %d %s",
+				       " result: %d and status: %d ",
 				       MAC_ADDR_ARRAY(pWextState->req_bssId.bytes),
-				       roamResult,
-				       get_e_csr_roam_result_str(roamResult),
-				       roamStatus,
-				       get_e_roam_cmd_status_str(roamStatus));
+				       roamResult, roamStatus);
 			}
 			hdd_debug("Invoking packetdump deregistration API");
 			wlan_deregister_txrx_packetdump();
@@ -3945,7 +3894,7 @@ hdd_roam_tdls_status_update_handler(hdd_adapter_t *pAdapter,
 			for (staIdx = 0;
 			     staIdx < pHddCtx->max_num_tdls_sta;
 			     staIdx++) {
-				if (HDD_WLAN_INVALID_STA_ID ==
+				if (0 ==
 				    pHddCtx->tdlsConnInfo[staIdx].
 				    staId) {
 					pHddCtx->tdlsConnInfo[staIdx].
@@ -4076,8 +4025,7 @@ hdd_roam_tdls_status_update_handler(hdd_adapter_t *pAdapter,
 							 peerMac.bytes);
 				mutex_unlock(&pHddCtx->tdls_lock);
 
-				pHddCtx->tdlsConnInfo[staIdx].staId =
-						HDD_WLAN_INVALID_STA_ID;
+				pHddCtx->tdlsConnInfo[staIdx].staId = 0;
 				pHddCtx->tdlsConnInfo[staIdx].
 				sessionId = 255;
 				qdf_mem_zero(&pHddCtx->
@@ -4976,12 +4924,8 @@ hdd_sme_roam_callback(void *pContext, tCsrRoamInfo *pRoamInfo, uint32_t roamId,
 	hdd_context_t *pHddCtx;
 
 	if (eCSR_ROAM_UPDATE_SCAN_RESULT != roamStatus)
-		hdd_debug("CSR Callback: status= %d %s result= %d %s roamID=%d",
-			  roamStatus,
-			  get_e_roam_cmd_status_str(roamStatus),
-			  roamResult,
-			  get_e_csr_roam_result_str(roamResult),
-			  roamId);
+		hdd_debug("CSR Callback: status= %d result= %d roamID=%d",
+			  roamStatus, roamResult, roamId);
 	/* Sanity check */
 	if ((NULL == pAdapter) || (WLAN_HDD_ADAPTER_MAGIC != pAdapter->magic)) {
 		hdd_err("Invalid adapter or adapter has invalid magic");

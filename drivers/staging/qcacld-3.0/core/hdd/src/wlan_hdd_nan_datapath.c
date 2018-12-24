@@ -45,14 +45,15 @@ qca_wlan_vendor_ndp_policy[QCA_WLAN_VENDOR_ATTR_NDP_PARAMS_MAX + 1] = {
 	[QCA_WLAN_VENDOR_ATTR_NDP_SERVICE_INSTANCE_ID] = { .type = NLA_U32 },
 	[QCA_WLAN_VENDOR_ATTR_NDP_CHANNEL] = { .type = NLA_U32 },
 	[QCA_WLAN_VENDOR_ATTR_NDP_PEER_DISCOVERY_MAC_ADDR] = {
-					.type = NLA_UNSPEC,
+					.type = NLA_BINARY,
 					.len = QDF_MAC_ADDR_SIZE },
 	[QCA_WLAN_VENDOR_ATTR_NDP_CONFIG_SECURITY] = { .type = NLA_U16 },
-	[QCA_WLAN_VENDOR_ATTR_NDP_CONFIG_QOS] = { .type = NLA_U32 },
+	[QCA_WLAN_VENDOR_ATTR_NDP_CONFIG_QOS] = { .type = NLA_BINARY,
+					.len = NDP_QOS_INFO_LEN },
 	[QCA_WLAN_VENDOR_ATTR_NDP_APP_INFO] = { .type = NLA_BINARY,
 					.len = NDP_APP_INFO_LEN },
 	[QCA_WLAN_VENDOR_ATTR_NDP_INSTANCE_ID] = { .type = NLA_U32 },
-	[QCA_WLAN_VENDOR_ATTR_NDP_RESPONSE_CODE] = { .type = NLA_U32 },
+	[QCA_WLAN_VENDOR_ATTR_NDP_RESPONSE_CODE] = { .type = NLA_U16 },
 	[QCA_WLAN_VENDOR_ATTR_NDP_NDI_MAC_ADDR] = { .type = NLA_BINARY,
 					.len = QDF_MAC_ADDR_SIZE },
 	[QCA_WLAN_VENDOR_ATTR_NDP_INSTANCE_ID_ARRAY] = { .type = NLA_BINARY,
@@ -249,11 +250,13 @@ static int hdd_ndi_start_bss(hdd_adapter_t *adapter,
 
 	roam_profile->csrPersona = adapter->device_mode;
 
-	if (!operating_channel)
-		operating_channel = NAN_SOCIAL_CHANNEL_2_4GHZ;
-
 	roam_profile->ChannelInfo.numOfChannels = 1;
-	roam_profile->ChannelInfo.ChannelList = &operating_channel;
+	if (operating_channel) {
+		roam_profile->ChannelInfo.ChannelList = &operating_channel;
+	} else {
+		roam_profile->ChannelInfo.ChannelList[0] =
+			NAN_SOCIAL_CHANNEL_2_4GHZ;
+	}
 
 	roam_profile->SSIDs.numOfSSIDs = 1;
 	roam_profile->SSIDs.SSIDList->SSID.length = 0;
@@ -453,8 +456,8 @@ static int hdd_ndi_create_req_handler(hdd_context_t *hdd_ctx,
 	 * does not have any such formal requests. The NDI create request
 	 * is responsible for starting the BSS as well.
 	 */
-	if (op_channel != NAN_SOCIAL_CHANNEL_2_4GHZ &&
-	    op_channel != NAN_SOCIAL_CHANNEL_5GHZ_LOWER_BAND &&
+	if (op_channel != NAN_SOCIAL_CHANNEL_2_4GHZ ||
+	    op_channel != NAN_SOCIAL_CHANNEL_5GHZ_LOWER_BAND ||
 	    op_channel != NAN_SOCIAL_CHANNEL_5GHZ_UPPER_BAND) {
 		/* start NDI on the default 2.4 GHz social channel */
 		op_channel = NAN_SOCIAL_CHANNEL_2_4GHZ;

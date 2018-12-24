@@ -175,8 +175,6 @@ typedef enum {
 	eCsrLostLink1Abort,
 	eCsrLostLink2Abort,
 	eCsrLostLink3Abort,
-	/* Roaming disabled from driver during connect/start BSS */
-	eCsrDriverDisabled,
 } eCsrRoamReason;
 
 typedef enum {

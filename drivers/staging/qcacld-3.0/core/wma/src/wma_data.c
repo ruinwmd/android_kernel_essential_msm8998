@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -44,7 +44,11 @@
 #include "cfg_api.h"
 #include "ol_txrx_ctrl_api.h"
 #include <cdp_txrx_tx_throttle.h>
-#include "target_if_def_config.h"
+#if defined(CONFIG_HL_SUPPORT)
+#include "wlan_tgt_def_config_hl.h"
+#else
+#include "wlan_tgt_def_config.h"
+#endif
 #include "ol_txrx.h"
 #include "qdf_nbuf.h"
 #include "qdf_types.h"
@@ -1224,7 +1228,6 @@ void wma_set_linkstate(tp_wma_handle wma, tpLinkStateParams params)
 			WMA_LOGP(FL("Failed to fill vdev request for vdev_id %d"),
 				 vdev_id);
 			params->status = false;
-			goto out;
 		}
 
 		status = wma_send_vdev_stop_to_fw(wma, vdev_id);

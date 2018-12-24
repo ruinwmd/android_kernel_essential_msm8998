@@ -2370,14 +2370,6 @@ static QDF_STATUS wma_unified_bcn_tmpl_send(tp_wma_handle wma,
 	params.tmpl_len = tmpl_len;
 	params.frm = frm;
 	params.tmpl_len_aligned = tmpl_len_aligned;
-	if (bcn_info->csa_count_offset &&
-	    (bcn_info->csa_count_offset > bytes_to_strip))
-		params.csa_count_offset =
-			bcn_info->csa_count_offset - bytes_to_strip;
-	if (bcn_info->ecsa_count_offset &&
-	    (bcn_info->ecsa_count_offset > bytes_to_strip))
-		params.ecsa_count_offset =
-			bcn_info->ecsa_count_offset - bytes_to_strip;
 
 	ret = wmi_unified_beacon_send_cmd(wma->wmi_handle,
 				 &params);
@@ -3305,13 +3297,6 @@ int wma_process_rmf_frame(tp_wma_handle wma_handle,
 			cds_pkt_return_packet(rx_pkt);
 			return -EINVAL;
 		}
-	if (qdf_nbuf_len(wbuf) < (sizeof(*wh) + IEEE80211_CCMP_HEADERLEN +
-						IEEE80211_CCMP_MICLEN)) {
-		WMA_LOGE("Buffer length less than expected %d ",
-						(int)qdf_nbuf_len(wbuf));
-		cds_pkt_return_packet(rx_pkt);
-		return -EINVAL;
-	}
 
 		orig_hdr = (uint8_t *) qdf_nbuf_data(wbuf);
 		/* Pointer to head of CCMP header */
@@ -3496,7 +3481,6 @@ end:
 }
 
 #define RATE_LIMIT 16
-#define RESERVE_BYTES   100
 /**
  * wma_mgmt_rx_process() - process management rx frame.
  * @handle: wma handle
@@ -3632,28 +3616,9 @@ static int wma_mgmt_rx_process(void *handle, uint8_t *data,
 		qdf_mem_free(rx_pkt);
 		return -EINVAL;
 	}
-	/*
-	 * Allocate the memory for this rx packet, add extra 100 bytes for:-
-	 *
-	 * 1.  Filling the missing RSN capabilites by some APs, which fill the
-	 *     RSN IE length as extra 2 bytes but dont fill the IE data with
-	 *     capabilities, resulting in failure in unpack core due to length
-	 *     mismatch. Check sir_validate_and_rectify_ies for more info.
-	 *
-	 * 2.  In the API wma_process_rmf_frame(), the driver trims the CCMP
-	 *     header by overwriting the IEEE header to memory occupied by CCMP
-	 *     header, but an overflow is possible if the memory allocated to
-	 *     frame is less than the sizeof(struct ieee80211_frame) +CCMP
-	 *     HEADER len, so allocating 100 bytes would solve this issue too.
-	 *
-	 * 3.  CCMP header is pointing to orig_hdr +
-	 *     sizeof(struct ieee80211_frame) which could also result in OOB
-	 *     access, if the data len is less than
-	 *     sizeof(struct ieee80211_frame), allocating extra bytes would
-	 *     result in solving this issue too.
-	 */
-	wbuf = qdf_nbuf_alloc(NULL, roundup(hdr->buf_len + RESERVE_BYTES,
-							4), 0, 4, false);
+
+	/* Why not just use rx_event->hdr.buf_len? */
+	wbuf = qdf_nbuf_alloc(NULL, roundup(hdr->buf_len, 4), 0, 4, false);
 	if (!wbuf) {
 		WMA_LOGE("%s: Failed to allocate wbuf for mgmt rx len(%u)",
 			    __func__, hdr->buf_len);
@@ -3664,9 +3629,6 @@ static int wma_mgmt_rx_process(void *handle, uint8_t *data,
 	qdf_nbuf_put_tail(wbuf, hdr->buf_len);
 	qdf_nbuf_set_protocol(wbuf, ETH_P_CONTROL);
 	wh = (struct ieee80211_frame *)qdf_nbuf_data(wbuf);
-	qdf_mem_zero(((uint8_t *)wh + hdr->buf_len), roundup(hdr->buf_len +
-							RESERVE_BYTES, 4) -
-							hdr->buf_len);
 
 	rx_pkt->pkt_meta.mpdu_hdr_ptr = qdf_nbuf_data(wbuf);
 	rx_pkt->pkt_meta.mpdu_data_ptr = rx_pkt->pkt_meta.mpdu_hdr_ptr +
@@ -3702,7 +3664,7 @@ static int wma_mgmt_rx_process(void *handle, uint8_t *data,
 	mgt_type = (wh)->i_fc[0] & IEEE80211_FC0_TYPE_MASK;
 	mgt_subtype = (wh)->i_fc[0] & IEEE80211_FC0_SUBTYPE_MASK;
 
-	WMA_LOGD(FL("BSSID: "MAC_ADDRESS_STR" snr = %d, Type = %x, Subtype = %x, seq_num = %x, rssi = %d, rssi_raw = %d rssi for chain0 is :- %d, chain1 is %d, tsf_delta: %u"),
+	WMA_LOGD(FL("BSSID: "MAC_ADDRESS_STR" snr = %d, Type = %x, Subtype = %x, seq_num = %x, rssi = %d, rssi_raw = %d tsf_delta: %u"),
 			MAC_ADDR_ARRAY(wh->i_addr3),
 			hdr->snr, mgt_type, mgt_subtype,
 			(((*(uint16_t *)wh->i_seq) &
@@ -3710,10 +3672,6 @@ static int wma_mgmt_rx_process(void *handle, uint8_t *data,
 				IEEE80211_SEQ_SEQ_SHIFT),
 			rx_pkt->pkt_meta.rssi,
 			rx_pkt->pkt_meta.rssi_raw,
-			(rx_pkt->pkt_meta.rssi_per_chain[0] +
-					WMA_NOISE_FLOOR_DBM_DEFAULT),
-			(rx_pkt->pkt_meta.rssi_per_chain[1] +
-					WMA_NOISE_FLOOR_DBM_DEFAULT),
 			hdr->tsf_delta);
 	if (!wma_handle->mgmt_rx) {
 		WMA_LOGE("Not registered for Mgmt rx, dropping the frame");
