@@ -1,9 +1,6 @@
 /*
  * Copyright (c) 2015-2018 The Linux Foundation. All rights reserved.
  *
- * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
- *
- *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
  * above copyright notice and this permission notice appear in all
@@ -17,12 +14,6 @@
  * PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
  * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  * PERFORMANCE OF THIS SOFTWARE.
- */
-
-/*
- * This file was originally distributed by Qualcomm Atheros, Inc.
- * under proprietary terms before Copyright ownership was assigned
- * to the Linux Foundation.
  */
 
 #include <linux/platform_device.h>
@@ -48,6 +39,7 @@
 #include "wlan_hdd_driver_ops.h"
 #include "wlan_hdd_scan.h"
 #include "wlan_hdd_ipa.h"
+#include "wlan_hdd_debugfs.h"
 
 #ifdef MODULE
 #define WLAN_MODULE_NAME  module_name(THIS_MODULE)
@@ -476,6 +468,9 @@ static void wlan_hdd_remove(struct device *dev)
 	if (!cds_wait_for_external_threads_completion(__func__))
 		hdd_warn("External threads are still active attempting driver unload anyway");
 
+	if (!hdd_wait_for_debugfs_threads_completion())
+		hdd_warn("Debugfs threads are still active attempting driver unload anyway");
+
 	hdd_pld_driver_unloading(dev);
 
 	if (QDF_IS_EPPING_ENABLED(cds_get_conparam())) {
@@ -574,6 +569,9 @@ static void wlan_hdd_shutdown(void)
 
 	if (!cds_wait_for_external_threads_completion(__func__))
 		hdd_err("Host is not ready for SSR, attempting anyway");
+
+	if (!hdd_wait_for_debugfs_threads_completion())
+		hdd_err("Debufs threads are still pending, attempting SSR anyway");
 
 	if (!QDF_IS_EPPING_ENABLED(cds_get_conparam())) {
 		hif_disable_isr(hif_ctx);
@@ -772,6 +770,11 @@ static int __wlan_hdd_bus_suspend_noirq(void)
 		return err;
 	}
 
+	if (hdd_ctx->driver_status == DRIVER_MODULES_OPENED) {
+		hdd_err("Driver open state,  can't suspend");
+		return -EAGAIN;
+	}
+
 	if (hdd_ctx->driver_status != DRIVER_MODULES_ENABLED) {
 		hdd_debug("Driver Module closed return success");
 		return 0;
@@ -851,6 +854,11 @@ static int __wlan_hdd_bus_resume(void)
 	if (status) {
 		hdd_err("Invalid hdd context");
 		return status;
+	}
+
+	if (hdd_ctx->driver_status == DRIVER_MODULES_OPENED) {
+		hdd_err("Driver open state,  can't suspend");
+		return -EAGAIN;
 	}
 
 	if (hdd_ctx->driver_status != DRIVER_MODULES_ENABLED) {
@@ -1373,7 +1381,9 @@ static void hdd_cleanup_on_fw_down(void)
 static void wlan_hdd_set_the_pld_uevent(struct pld_uevent_data *uevent)
 {
 	switch (uevent->uevent) {
+	case PLD_FW_DOWN:
 	case PLD_RECOVERY:
+		cds_set_target_ready(false);
 		cds_set_recovery_in_progress(true);
 		break;
 	default:
@@ -1392,10 +1402,10 @@ static void wlan_hdd_pld_uevent(struct device *dev,
 				struct pld_uevent_data *uevent)
 {
 	enum cds_driver_state driver_state;
+	hdd_context_t *hdd_ctx;
 
 	ENTER();
 
-	mutex_lock(&hdd_init_deinit_lock);
 
 	hdd_info("pld event %d", uevent->uevent);
 
@@ -1407,20 +1417,32 @@ static void wlan_hdd_pld_uevent(struct device *dev,
 		goto uevent_not_allowed;
 	}
 
+	hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
+
+	if (!hdd_ctx) {
+		hdd_err("hdd_ctx is NULL return");
+		return;
+	}
+
 	wlan_hdd_set_the_pld_uevent(uevent);
 
+	mutex_lock(&hdd_init_deinit_lock);
 	switch (uevent->uevent) {
 	case PLD_RECOVERY:
+		cds_set_target_ready(false);
 		hdd_pld_ipa_uc_shutdown_pipes();
 		wlan_hdd_purge_notifier();
 		break;
 	case PLD_FW_DOWN:
 		hdd_cleanup_on_fw_down();
+		if (pld_is_fw_rejuvenate() &&
+		    hdd_ipa_is_enabled(hdd_ctx))
+			hdd_ipa_fw_rejuvenate_send_msg(hdd_ctx);
 		break;
 	}
-uevent_not_allowed:
 	mutex_unlock(&hdd_init_deinit_lock);
 
+uevent_not_allowed:
 	EXIT();
 	return;
 }

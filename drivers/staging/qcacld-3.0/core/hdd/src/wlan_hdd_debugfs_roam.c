@@ -2,9 +2,6 @@
 /*
  * Copyright (c) 2018 The Linux Foundation. All rights reserved.
  *
- * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
- *
- *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
  * above copyright notice and this permission notice appear in all
@@ -216,7 +213,6 @@ static char *hdd_roam_scan_trigger_to_str(uint32_t roam_scan_trigger)
 	default:
 		return "UNKNOWN REASON";
 	}
-	return "UNKNOWN REASON";
 }
 
 /**
@@ -281,7 +277,6 @@ static char *hdd_client_id_to_str(uint32_t client_id)
 	default:
 		return "UNKNOWN";
 	}
-	return "UNKNOWN";
 }
 
 /**
