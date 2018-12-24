@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2018 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -16,12 +16,19 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 
-#ifndef __MP_DEV_H__
-#define __MP_DEV_H__
-void priv_start_agc(struct hif_softc *scn);
-void priv_dump_agc(struct hif_softc *scn);
-void priv_start_cap_chaninfo(struct hif_softc *scn);
-void priv_dump_chaninfo(struct hif_softc *scn);
-void priv_dump_bbwatchdog(struct hif_softc *scn);
-void hif_shutdown_device(struct hif_opaque_softc *scn);
-#endif /* __MP_DEV_H__ */
+/**
+ * DOC: i_qdf_cpuhp.h (CPU hotplug)
+ * Linux-specific definitions for QDF CPU hotplug API's
+ */
+
+#ifndef __I_QDF_CPUHP_H
+#define __I_QDF_CPUHP_H
+
+#include "linux/types.h"
+
+typedef void (*__qdf_cpuhp_emit)(uint32_t cpu);
+
+void __qdf_cpuhp_os_init(__qdf_cpuhp_emit on_up, __qdf_cpuhp_emit on_down);
+void __qdf_cpuhp_os_deinit(void);
+
+#endif /* __I_QDF_CPUHP_H */
